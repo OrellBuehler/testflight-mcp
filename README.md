@@ -87,6 +87,15 @@ If you built from source instead, use `"command": "node"` with
 `"args": ["/path/to/testflight-mcp/dist/index.js"]`. Restart Claude Code and verify with
 `claude mcp list` (should show `testflight ✓ connected`) or `/mcp` inside a session.
 
+### Example prompts
+
+Once connected, ask the agent things like:
+
+- "List the latest TestFlight screenshot feedback for my app and summarize the recurring complaints."
+- "Show crash feedback for build 1.4.0 and download the crash log for the most recent one."
+- "Which beta testers reported feedback this week, and what devices/OS versions were they on?"
+- "Pull this month's sales summary as CSV."
+
 ## Tools
 
 Start from `list_apps` to get an `app_id`, then drill into feedback. All tools are read-only.
