@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AppStoreConnectClient, JsonApiResource, QueryParams } from "../asc/client.js";
-import { ok, err, imageResult, shapeResource } from "../asc/format.js";
+import { ok, err, imageResult, shapeResource, singleRef, findIncluded } from "../asc/format.js";
 
 const PLATFORM = z.enum(["IOS", "MAC_OS", "TV_OS", "VISION_OS"]);
 const TESTER_FIELDS = "firstName,lastName,email";
@@ -9,6 +9,12 @@ const BUILD_FIELDS = "version,uploadedDate";
 
 const listShape = {
   app_id: z.string().describe("App Store Connect app ID (from list_apps)"),
+  app_version: z
+    .string()
+    .optional()
+    .describe(
+      "Pre-release (marketing) version to filter by, e.g. '1.2.0'. Defaults to 'latest' — only the most recent version's feedback is returned; older versions are excluded. Pass 'all' to include every version. Ignored when build_id is set.",
+    ),
   build_id: z.string().optional().describe("Filter to a single build ID"),
   device_platform: PLATFORM.optional().describe("Filter by device platform"),
   app_platform: PLATFORM.optional().describe("Filter by app platform"),
@@ -53,6 +59,68 @@ function buildListParams(
   return params;
 }
 
+async function resolveVersionBuildIds(
+  client: AppStoreConnectClient,
+  appId: string,
+  version: string,
+): Promise<{ resolvedVersion: string | null; buildIds: string[] }> {
+  if (version === "latest") {
+    const { data, included } = await client.getAll("/builds", {
+      "filter[app]": appId,
+      include: "preReleaseVersion",
+      "fields[builds]": "version",
+      "fields[preReleaseVersions]": "version",
+      sort: "-uploadedDate",
+      limit: 200,
+    });
+    const versionOf = (b: JsonApiResource): string | null => {
+      const pre = findIncluded(included, singleRef(b.relationships?.preReleaseVersion));
+      const v = pre?.attributes?.version;
+      return typeof v === "string" ? v : null;
+    };
+    const target = data.map(versionOf).find((v) => v !== null) ?? null;
+    const buildIds = target ? data.filter((b) => versionOf(b) === target).map((b) => b.id) : [];
+    return { resolvedVersion: target, buildIds };
+  }
+  const { data } = await client.getAll("/builds", {
+    "filter[app]": appId,
+    "filter[preReleaseVersion.version]": version,
+    "fields[builds]": "version",
+    sort: "-uploadedDate",
+    limit: 200,
+  });
+  return { resolvedVersion: version, buildIds: data.map((b) => b.id) };
+}
+
+async function listFeedback(
+  client: AppStoreConnectClient,
+  args: { app_id: string; app_version?: string; build_id?: string },
+  endpoint: string,
+  fieldsKey: string,
+  fields: string,
+) {
+  const params = buildListParams(args, fieldsKey, fields);
+  let appVersion: string | null = null;
+  if (!args.build_id) {
+    const mode = args.app_version ?? "latest";
+    if (mode !== "all") {
+      const resolved = await resolveVersionBuildIds(client, args.app_id, mode);
+      appVersion = resolved.resolvedVersion;
+      if (resolved.buildIds.length > 0) {
+        params["filter[build]"] = resolved.buildIds;
+      } else if (mode !== "latest") {
+        return ok({ count: 0, appVersion, feedback: [] });
+      }
+    }
+  }
+  const { data, included } = await client.getAll(
+    `/apps/${encodeURIComponent(args.app_id)}/${endpoint}`,
+    params,
+  );
+  const items = data.map((d) => shapeResource(d, included, { relationships: ["build", "tester"] }));
+  return ok({ count: items.length, appVersion: appVersion ?? undefined, feedback: items });
+}
+
 const SCREENSHOT_FIELDS =
   "createdDate,comment,email,deviceModel,osVersion,locale,timeZone,architecture,connectionType,pairedAppleWatch,appUptimeInMilliseconds,diskBytesAvailable,diskBytesTotal,batteryPercentage,screenWidthInPoints,screenHeightInPoints,appPlatform,devicePlatform,deviceFamily,buildBundleId,screenshots";
 const CRASH_FIELDS =
@@ -70,23 +138,17 @@ function findCrashLogUrl(attrs: Record<string, unknown> | undefined): string | n
 export function registerFeedbackTools(server: McpServer, client: AppStoreConnectClient) {
   server.tool(
     "list_screenshot_feedback",
-    "List TestFlight screenshot feedback submissions for an app. Each submission includes the tester's comment (the actual feedback text), the screenshot asset URL(s), device/OS details, and the resolved tester and build. Filter by build, platform, device, OS or tester.",
+    "List TestFlight screenshot feedback submissions for an app. Each submission includes the tester's comment (the actual feedback text), the screenshot asset URL(s), device/OS details, and the resolved tester and build. By default only the latest pre-release version's feedback is returned (set app_version to a specific version or 'all'). Filter by build, platform, device, OS or tester.",
     listShape,
     async (args) => {
       try {
-        const params = buildListParams(
+        return await listFeedback(
+          client,
           args,
+          "betaFeedbackScreenshotSubmissions",
           "fields[betaFeedbackScreenshotSubmissions]",
           SCREENSHOT_FIELDS,
         );
-        const { data, included } = await client.getAll(
-          `/apps/${encodeURIComponent(args.app_id)}/betaFeedbackScreenshotSubmissions`,
-          params,
-        );
-        const items = data.map((d) =>
-          shapeResource(d, included, { relationships: ["build", "tester"] }),
-        );
-        return ok({ count: items.length, feedback: items });
       } catch (e) {
         return err(e);
       }
@@ -95,19 +157,17 @@ export function registerFeedbackTools(server: McpServer, client: AppStoreConnect
 
   server.tool(
     "list_crash_feedback",
-    "List TestFlight crash feedback submissions for an app. Each submission includes any tester comment, device/OS details, the resolved tester and build, and a reference to the downloadable crash log (use get_crash_log). Filter by build, platform, device, OS or tester.",
+    "List TestFlight crash feedback submissions for an app. Each submission includes any tester comment, device/OS details, the resolved tester and build, and a reference to the downloadable crash log (use get_crash_log). By default only the latest pre-release version's feedback is returned (set app_version to a specific version or 'all'). Filter by build, platform, device, OS or tester.",
     listShape,
     async (args) => {
       try {
-        const params = buildListParams(args, "fields[betaFeedbackCrashSubmissions]", CRASH_FIELDS);
-        const { data, included } = await client.getAll(
-          `/apps/${encodeURIComponent(args.app_id)}/betaFeedbackCrashSubmissions`,
-          params,
+        return await listFeedback(
+          client,
+          args,
+          "betaFeedbackCrashSubmissions",
+          "fields[betaFeedbackCrashSubmissions]",
+          CRASH_FIELDS,
         );
-        const items = data.map((d) =>
-          shapeResource(d, included, { relationships: ["build", "tester"] }),
-        );
-        return ok({ count: items.length, feedback: items });
       } catch (e) {
         return err(e);
       }

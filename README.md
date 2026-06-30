@@ -102,13 +102,13 @@ Start from `list_apps` to get an `app_id`, then drill into feedback. All tools a
 
 **TestFlight feedback**
 
-| Tool                       | Description                                                                                                                           |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `list_screenshot_feedback` | Screenshot feedback for an app: tester comment, screenshot URLs, device/OS, tester, build. Filter by build/platform/device/OS/tester. |
-| `list_crash_feedback`      | Crash feedback for an app: comment, device/OS, tester, build, crash-log reference.                                                    |
-| `get_screenshot_feedback`  | One screenshot submission; optionally returns the first screenshot inline as an image.                                                |
-| `get_crash_feedback`       | One crash submission with full metadata and crash-log reference.                                                                      |
-| `get_crash_log`            | Download the crash log text for a crash submission.                                                                                   |
+| Tool                       | Description                                                                                                                                                                                                                  |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_screenshot_feedback` | Screenshot feedback for an app: tester comment, screenshot URLs, device/OS, tester, build. Defaults to the latest version only (`app_version`: a version like `1.2.0`, or `all`). Filter by build/platform/device/OS/tester. |
+| `list_crash_feedback`      | Crash feedback for an app: comment, device/OS, tester, build, crash-log reference. Defaults to the latest version only (`app_version`: a version like `1.2.0`, or `all`).                                                    |
+| `get_screenshot_feedback`  | One screenshot submission; optionally returns the first screenshot inline as an image.                                                                                                                                       |
+| `get_crash_feedback`       | One crash submission with full metadata and crash-log reference.                                                                                                                                                             |
+| `get_crash_log`            | Download the crash log text for a crash submission.                                                                                                                                                                          |
 
 **Apps & builds**
 
