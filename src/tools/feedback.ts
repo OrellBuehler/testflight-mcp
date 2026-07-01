@@ -1,11 +1,20 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AppStoreConnectClient, JsonApiResource, QueryParams } from "../asc/client.js";
-import { ok, err, imageResult, shapeResource, singleRef, findIncluded } from "../asc/format.js";
+import {
+  ok,
+  err,
+  imageResult,
+  shapeResource,
+  singleRef,
+  findIncluded,
+  flattenResource,
+} from "../asc/format.js";
 
 const PLATFORM = z.enum(["IOS", "MAC_OS", "TV_OS", "VISION_OS"]);
 const TESTER_FIELDS = "firstName,lastName,email";
 const BUILD_FIELDS = "version,uploadedDate";
+const FEEDBACK_RELATIONSHIPS = "build,tester";
 
 const listShape = {
   app_id: z.string().describe("App Store Connect app ID (from list_apps)"),
@@ -43,10 +52,10 @@ function buildListParams(
   fields: string,
 ): QueryParams {
   const params: QueryParams = {
-    include: "build,tester",
+    include: FEEDBACK_RELATIONSHIPS,
     "fields[builds]": BUILD_FIELDS,
     "fields[betaTesters]": TESTER_FIELDS,
-    [fieldsKey]: fields,
+    [fieldsKey]: `${fields},${FEEDBACK_RELATIONSHIPS}`,
     sort: args.sort ?? "-createdDate",
     limit: args.limit ?? 50,
   };
@@ -92,6 +101,45 @@ async function resolveVersionBuildIds(
   return { resolvedVersion: version, buildIds: data.map((b) => b.id) };
 }
 
+async function preReleaseVersionByBuild(
+  client: AppStoreConnectClient,
+  appId: string,
+): Promise<Map<string, Record<string, unknown> | null>> {
+  const { data, included } = await client.getAll("/builds", {
+    "filter[app]": appId,
+    include: "preReleaseVersion",
+    "fields[builds]": "preReleaseVersion",
+    "fields[preReleaseVersions]": "version",
+    limit: 200,
+  });
+  const map = new Map<string, Record<string, unknown> | null>();
+  for (const b of data) {
+    const pre = findIncluded(included, singleRef(b.relationships?.preReleaseVersion));
+    map.set(b.id, flattenResource(pre));
+  }
+  return map;
+}
+
+async function preReleaseVersionForBuild(
+  client: AppStoreConnectClient,
+  buildId: string,
+): Promise<Record<string, unknown> | null> {
+  const res = await client.get(`/builds/${encodeURIComponent(buildId)}`, {
+    include: "preReleaseVersion",
+    "fields[builds]": "preReleaseVersion",
+    "fields[preReleaseVersions]": "version",
+  });
+  const build = res.data as JsonApiResource;
+  const pre = findIncluded(res.included ?? [], singleRef(build.relationships?.preReleaseVersion));
+  return flattenResource(pre);
+}
+
+function buildIdOf(item: Record<string, unknown>): string | undefined {
+  const build = item.build;
+  if (build && typeof build === "object") return (build as { id?: string }).id;
+  return undefined;
+}
+
 async function listFeedback(
   client: AppStoreConnectClient,
   args: { app_id: string; app_version?: string; build_id?: string },
@@ -118,6 +166,14 @@ async function listFeedback(
     params,
   );
   const items = data.map((d) => shapeResource(d, included, { relationships: ["build", "tester"] }));
+  if (items.some((i) => buildIdOf(i) !== undefined)) {
+    const preByBuild = await preReleaseVersionByBuild(client, args.app_id);
+    for (const item of items) {
+      const id = buildIdOf(item);
+      if (id)
+        (item.build as Record<string, unknown>).preReleaseVersion = preByBuild.get(id) ?? null;
+    }
+  }
   return ok({ count: items.length, appVersion: appVersion ?? undefined, feedback: items });
 }
 
@@ -138,7 +194,7 @@ function findCrashLogUrl(attrs: Record<string, unknown> | undefined): string | n
 export function registerFeedbackTools(server: McpServer, client: AppStoreConnectClient) {
   server.tool(
     "list_screenshot_feedback",
-    "List TestFlight screenshot feedback submissions for an app. Each submission includes the tester's comment (the actual feedback text), the screenshot asset URL(s), device/OS details, and the resolved tester and build. By default only the latest pre-release version's feedback is returned (set app_version to a specific version or 'all'). Filter by build, platform, device, OS or tester.",
+    "List TestFlight screenshot feedback submissions for an app. Each submission includes the tester's comment (the actual feedback text), the screenshot asset URL(s), device/OS details, and the resolved tester and build. The build carries its build number (build.version) and the TestFlight/marketing version (build.preReleaseVersion.version, e.g. '1.2.0'). By default only the latest pre-release version's feedback is returned (set app_version to a specific version or 'all'). Filter by build, platform, device, OS or tester.",
     listShape,
     async (args) => {
       try {
@@ -157,7 +213,7 @@ export function registerFeedbackTools(server: McpServer, client: AppStoreConnect
 
   server.tool(
     "list_crash_feedback",
-    "List TestFlight crash feedback submissions for an app. Each submission includes any tester comment, device/OS details, the resolved tester and build, and a reference to the downloadable crash log (use get_crash_log). By default only the latest pre-release version's feedback is returned (set app_version to a specific version or 'all'). Filter by build, platform, device, OS or tester.",
+    "List TestFlight crash feedback submissions for an app. Each submission includes any tester comment, device/OS details, the resolved tester and build, and a reference to the downloadable crash log (use get_crash_log). The build carries its build number (build.version) and the TestFlight/marketing version (build.preReleaseVersion.version, e.g. '1.2.0'). By default only the latest pre-release version's feedback is returned (set app_version to a specific version or 'all'). Filter by build, platform, device, OS or tester.",
     listShape,
     async (args) => {
       try {
@@ -176,7 +232,7 @@ export function registerFeedbackTools(server: McpServer, client: AppStoreConnect
 
   server.tool(
     "get_screenshot_feedback",
-    "Get a single screenshot feedback submission by ID, including the tester comment, full device metadata, resolved tester and build, and screenshot asset URLs. Set download_screenshot to also return the first screenshot inline as an image.",
+    "Get a single screenshot feedback submission by ID, including the tester comment, full device metadata, resolved tester and build (with build.version and the TestFlight version build.preReleaseVersion.version), and screenshot asset URLs. Set download_screenshot to also return the first screenshot inline as an image.",
     {
       feedback_id: z.string().describe("Screenshot feedback submission ID"),
       download_screenshot: z
@@ -189,10 +245,10 @@ export function registerFeedbackTools(server: McpServer, client: AppStoreConnect
         const res = await client.get(
           `/betaFeedbackScreenshotSubmissions/${encodeURIComponent(feedback_id)}`,
           {
-            include: "build,tester",
+            include: FEEDBACK_RELATIONSHIPS,
             "fields[builds]": BUILD_FIELDS,
             "fields[betaTesters]": TESTER_FIELDS,
-            "fields[betaFeedbackScreenshotSubmissions]": SCREENSHOT_FIELDS,
+            "fields[betaFeedbackScreenshotSubmissions]": `${SCREENSHOT_FIELDS},${FEEDBACK_RELATIONSHIPS}`,
           },
         );
         const resource = res.data as JsonApiResource;
@@ -208,6 +264,11 @@ export function registerFeedbackTools(server: McpServer, client: AppStoreConnect
             return imageResult(base64, mimeType, `Screenshot feedback ${feedback_id}: ${comment}`);
           }
         }
+        const buildId = buildIdOf(shaped);
+        if (buildId) {
+          (shaped.build as Record<string, unknown>).preReleaseVersion =
+            await preReleaseVersionForBuild(client, buildId);
+        }
         return ok(shaped);
       } catch (e) {
         return err(e);
@@ -217,24 +278,28 @@ export function registerFeedbackTools(server: McpServer, client: AppStoreConnect
 
   server.tool(
     "get_crash_feedback",
-    "Get a single crash feedback submission by ID, including any tester comment, full device metadata, resolved tester and build, and the crash log reference. Use get_crash_log to download the crash log text.",
+    "Get a single crash feedback submission by ID, including any tester comment, full device metadata, resolved tester and build (with build.version and the TestFlight version build.preReleaseVersion.version), and the crash log reference. Use get_crash_log to download the crash log text.",
     { feedback_id: z.string().describe("Crash feedback submission ID") },
     async ({ feedback_id }) => {
       try {
         const res = await client.get(
           `/betaFeedbackCrashSubmissions/${encodeURIComponent(feedback_id)}`,
           {
-            include: "build,tester",
+            include: FEEDBACK_RELATIONSHIPS,
             "fields[builds]": BUILD_FIELDS,
             "fields[betaTesters]": TESTER_FIELDS,
-            "fields[betaFeedbackCrashSubmissions]": CRASH_FIELDS,
+            "fields[betaFeedbackCrashSubmissions]": `${CRASH_FIELDS},${FEEDBACK_RELATIONSHIPS}`,
           },
         );
-        return ok(
-          shapeResource(res.data as JsonApiResource, res.included ?? [], {
-            relationships: ["build", "tester"],
-          }),
-        );
+        const shaped = shapeResource(res.data as JsonApiResource, res.included ?? [], {
+          relationships: ["build", "tester"],
+        });
+        const buildId = buildIdOf(shaped);
+        if (buildId) {
+          (shaped.build as Record<string, unknown>).preReleaseVersion =
+            await preReleaseVersionForBuild(client, buildId);
+        }
+        return ok(shaped);
       } catch (e) {
         return err(e);
       }
