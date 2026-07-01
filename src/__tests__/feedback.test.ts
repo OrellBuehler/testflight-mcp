@@ -74,6 +74,20 @@ describe("feedback tools", () => {
             { type: "builds", id: "b1", attributes: { version: "42" } },
           ],
         }),
+      )
+      .mockResolvedValueOnce(
+        resp({
+          data: [
+            {
+              type: "builds",
+              id: "b1",
+              relationships: {
+                preReleaseVersion: { data: { type: "preReleaseVersions", id: "pv1" } },
+              },
+            },
+          ],
+          included: [{ type: "preReleaseVersions", id: "pv1", attributes: { version: "1.2.0" } }],
+        }),
       );
     const res = await tools.get("list_screenshot_feedback")!({ app_id: "APP1" });
 
@@ -87,6 +101,14 @@ describe("feedback tools", () => {
     expect(feedbackCall.searchParams.get("include")).toBe("build,tester");
     expect(feedbackCall.searchParams.get("sort")).toBe("-createdDate");
     expect(feedbackCall.searchParams.get("filter[build]")).toBe("b1");
+    expect(feedbackCall.searchParams.get("fields[betaFeedbackScreenshotSubmissions]")).toContain(
+      "build,tester",
+    );
+
+    const enrichCall = new URL(mockFetch.mock.calls[2][0]);
+    expect(enrichCall.pathname).toBe("/v1/builds");
+    expect(enrichCall.searchParams.get("filter[app]")).toBe("APP1");
+    expect(enrichCall.searchParams.get("include")).toBe("preReleaseVersion");
 
     const payload = JSON.parse(res.content[0].text!);
     expect(payload.count).toBe(1);
@@ -95,7 +117,7 @@ describe("feedback tools", () => {
       id: "f1",
       comment: "button is cut off",
       tester: { id: "t1", email: "a@b.c" },
-      build: { id: "b1", version: "42" },
+      build: { id: "b1", version: "42", preReleaseVersion: { id: "pv1", version: "1.2.0" } },
     });
   });
 
@@ -183,6 +205,56 @@ describe("feedback tools", () => {
     expect(mockFetch.mock.calls[1][0]).toBe("https://shots/1.png");
     const image = res.content.find((c) => c.type === "image");
     expect(image?.data).toBe(Buffer.from([1, 2, 3]).toString("base64"));
+  });
+
+  it("get_screenshot_feedback resolves the build and its TestFlight version", async () => {
+    mockFetch
+      .mockResolvedValueOnce(
+        resp({
+          data: {
+            type: "betaFeedbackScreenshotSubmissions",
+            id: "f1",
+            attributes: { comment: "layout bug" },
+            relationships: {
+              tester: { data: { type: "betaTesters", id: "t1" } },
+              build: { data: { type: "builds", id: "b1" } },
+            },
+          },
+          included: [
+            { type: "betaTesters", id: "t1", attributes: { email: "a@b.c" } },
+            { type: "builds", id: "b1", attributes: { version: "42" } },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        resp({
+          data: {
+            type: "builds",
+            id: "b1",
+            relationships: {
+              preReleaseVersion: { data: { type: "preReleaseVersions", id: "pv1" } },
+            },
+          },
+          included: [{ type: "preReleaseVersions", id: "pv1", attributes: { version: "1.2.0" } }],
+        }),
+      );
+    const res = await tools.get("get_screenshot_feedback")!({ feedback_id: "f1" });
+
+    const feedbackCall = new URL(mockFetch.mock.calls[0][0]);
+    expect(feedbackCall.searchParams.get("include")).toBe("build,tester");
+    expect(feedbackCall.searchParams.get("fields[betaFeedbackScreenshotSubmissions]")).toContain(
+      "build,tester",
+    );
+    const enrichCall = new URL(mockFetch.mock.calls[1][0]);
+    expect(enrichCall.pathname).toBe("/v1/builds/b1");
+    expect(enrichCall.searchParams.get("include")).toBe("preReleaseVersion");
+
+    const payload = JSON.parse(res.content[0].text!);
+    expect(payload).toMatchObject({
+      id: "f1",
+      tester: { id: "t1", email: "a@b.c" },
+      build: { id: "b1", version: "42", preReleaseVersion: { id: "pv1", version: "1.2.0" } },
+    });
   });
 
   it("get_crash_log resolves the crash log URL and downloads its text", async () => {
