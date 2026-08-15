@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { AppStoreConnectClient } from "./asc/client.js";
 import { registerFeedbackTools } from "./tools/feedback.js";
@@ -10,8 +11,10 @@ import { registerTestFlightTools } from "./tools/testflight.js";
 import { registerDiagnosticsTools } from "./tools/diagnostics.js";
 import { registerCiTools } from "./tools/ci.js";
 
+const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
+
 export function createServer(client: AppStoreConnectClient, vendorNumber?: string): McpServer {
-  const server = new McpServer({ name: "testflight-mcp", version: "0.1.0" });
+  const server = new McpServer({ name: "testflight-mcp", version });
   registerFeedbackTools(server, client);
   registerAppTools(server, client);
   registerTestFlightTools(server, client);
