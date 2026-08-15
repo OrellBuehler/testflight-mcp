@@ -94,6 +94,11 @@ Once connected, ask the agent things like:
 - "List the latest TestFlight screenshot feedback for my app and summarize the recurring complaints."
 - "Show crash feedback for build 1.4.0 and download the crash log for the most recent one."
 - "Which beta testers reported feedback this week, and what devices/OS versions were they on?"
+- "Why can't my external testers see build 1.4.0 yet?"
+- "How many installs and crashes does the latest build have, and what's the crash rate?"
+- "Where is version 1.4.0 in App Review, and is anything blocking it?"
+- "What's the top hang signature in the latest build?"
+- "The last Xcode Cloud build failed — what were the errors?"
 - "Pull this month's sales summary as CSV."
 
 ## Tools
@@ -112,13 +117,23 @@ Start from `list_apps` to get an `app_id`, then drill into feedback. All tools a
 
 **Apps & builds**
 
-| Tool                    | Description                                                                |
-| ----------------------- | -------------------------------------------------------------------------- |
-| `list_apps`             | Apps in the account (id, name, bundleId, sku). Filter by bundle ID.        |
-| `get_app`               | One app by ID.                                                             |
-| `list_builds`           | TestFlight builds for an app (version, processing state, expiry).          |
-| `get_build`             | One build with its pre-release version.                                    |
-| `list_customer_reviews` | Public App Store reviews for a released app (distinct from beta feedback). |
+| Tool                    | Description                                                                                             |
+| ----------------------- | ------------------------------------------------------------------------------------------------------- |
+| `list_apps`             | Apps in the account (id, name, bundleId, sku). Filter by bundle ID.                                     |
+| `get_app`               | One app by ID.                                                                                          |
+| `list_builds`           | TestFlight builds for an app (version, processing state, expiry) with their TestFlight beta state.      |
+| `get_build`             | One build with its pre-release version and beta state.                                                  |
+| `list_customer_reviews` | Public App Store reviews for a released app, with your published response. Distinct from beta feedback. |
+
+**TestFlight build status & metrics**
+
+| Tool                          | Description                                                                                                                 |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `get_build_status`            | Why a build is (not) available to testers: internal/external build state, beta review state, and "What to Test" per locale. |
+| `get_build_usage_metrics`     | Installs, sessions, crashes, invites and feedback counts for a build.                                                       |
+| `get_beta_tester_metrics`     | Tester engagement (sessions, crashes, feedback) per tester, for an app or a beta group.                                     |
+| `list_beta_app_localizations` | Tester-facing TestFlight metadata (beta description, feedback email, privacy URL).                                          |
+| `get_beta_app_review_detail`  | Beta App Review contact, demo-account requirement and review notes.                                                         |
 
 **Beta testers & groups**
 
@@ -156,6 +171,31 @@ Start from `list_apps` to get an `app_id`, then drill into feedback. All tools a
 | `list_app_store_version_localizations` | Per-locale metadata (description, keywords, what's new, URLs). |
 | `get_app_store_version_localization`   | One localization by ID.                                        |
 
+**App Review pipeline**
+
+| Tool                           | Description                                                                                                |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `list_review_submissions`      | What is in App Review and its state, with the version under review and the submitted items.                |
+| `get_app_store_version_status` | One call for a version's release status: attached build, submission, phased release, review contact/notes. |
+
+**Performance & diagnostics**
+
+| Tool                         | Description                                                                                                                 |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `get_perf_power_metrics`     | MetricKit metrics for an app's recent versions or one build (launch, hang, memory, disk, battery) plus regression insights. |
+| `list_diagnostic_signatures` | Grouped disk-write / hang / launch problems for a build, weighted, with Apple's insight.                                    |
+| `get_diagnostic_logs`        | Logs for a signature; call stacks are stripped unless `include_call_stacks` is set.                                         |
+
+**Xcode Cloud**
+
+| Tool                    | Description                                                                         |
+| ----------------------- | ----------------------------------------------------------------------------------- |
+| `list_ci_products`      | Xcode Cloud products, optionally filtered by app.                                   |
+| `list_ci_build_runs`    | Build runs for a product or workflow (number, status, commit, branch/PR).           |
+| `list_ci_build_actions` | The actions of a build run (build, test, analyze, archive) with their status.       |
+| `list_ci_issues`        | Errors, warnings and test failures for a build action — what to read when CI fails. |
+| `list_ci_artifacts`     | Artifacts of a build action (logs, archives, test results) with download URLs.      |
+
 ## Notes & caveats
 
 - **Read-only.** The server cannot add/remove testers, edit metadata, or submit apps. The only `POST`
@@ -169,6 +209,11 @@ Start from `list_apps` to get an `app_id`, then drill into feedback. All tools a
   can see what's available.
 - **Reports** (`download_sales_report` / `download_finance_report`) are gzipped CSV decompressed for
   you, and need the **Finance** role on the API key plus `ASC_VENDOR_NUMBER`.
+- **Power & performance** data (`get_perf_power_metrics`, `list_diagnostic_signatures`,
+  `get_diagnostic_logs`) is aggregated MetricKit data from devices whose owners opted in to sharing
+  analytics, is iOS-only, and is empty for apps with too little usage to anonymize.
+- **Demo account passwords** are never requested: `get_beta_app_review_detail` and
+  `get_app_store_version_status` deliberately omit the `demoAccountPassword` field.
 - **Your data goes to the agent/LLM.** Feedback includes tester names, emails and device details. Use
   an API key scoped to the access you actually want.
 

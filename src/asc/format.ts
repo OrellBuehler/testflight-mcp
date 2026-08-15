@@ -24,6 +24,12 @@ export function singleRef(rel?: { data?: JsonApiRef | JsonApiRef[] | null }): Js
   return data;
 }
 
+export function manyRefs(rel?: { data?: JsonApiRef | JsonApiRef[] | null }): JsonApiRef[] {
+  const data = rel?.data;
+  if (!data) return [];
+  return Array.isArray(data) ? data : [data];
+}
+
 export function findIncluded(
   included: JsonApiResource[],
   ref: JsonApiRef | null,

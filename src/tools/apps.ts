@@ -5,6 +5,9 @@ import { ok, err, shapeResource, flattenResource } from "../asc/format.js";
 
 const APP_FIELDS = "name,bundleId,sku,primaryLocale";
 const BUILD_FIELDS = "version,uploadedDate,expirationDate,expired,minOsVersion,processingState";
+const BUILD_RELATIONSHIPS = "preReleaseVersion,buildBetaDetail";
+const BUILD_BETA_DETAIL_FIELDS = "autoNotifyEnabled,internalBuildState,externalBuildState";
+const REVIEW_FIELDS = "rating,title,body,reviewerNickname,createdDate,territory";
 
 export function registerAppTools(server: McpServer, client: AppStoreConnectClient) {
   server.tool(
@@ -50,7 +53,7 @@ export function registerAppTools(server: McpServer, client: AppStoreConnectClien
 
   server.tool(
     "list_builds",
-    "List TestFlight builds for an app (build/upload number, app version, platform, processing state, expiry). Filter by pre-release version or processing state.",
+    "List TestFlight builds for an app (build/upload number, app version, platform, processing state, expiry) together with each build's TestFlight distribution state (buildBetaDetail: internalBuildState, externalBuildState, autoNotifyEnabled). Filter by pre-release version or processing state.",
     {
       app_id: z.string().describe("App Store Connect app ID"),
       version: z.string().optional().describe("Filter by pre-release version, e.g. '1.2.0'"),
@@ -64,9 +67,10 @@ export function registerAppTools(server: McpServer, client: AppStoreConnectClien
       try {
         const params: QueryParams = {
           "filter[app]": app_id,
-          include: "preReleaseVersion",
-          "fields[builds]": BUILD_FIELDS,
+          include: BUILD_RELATIONSHIPS,
+          "fields[builds]": `${BUILD_FIELDS},${BUILD_RELATIONSHIPS}`,
           "fields[preReleaseVersions]": "version,platform",
+          "fields[buildBetaDetails]": BUILD_BETA_DETAIL_FIELDS,
           sort: "-uploadedDate",
           limit: limit ?? 25,
         };
@@ -74,7 +78,9 @@ export function registerAppTools(server: McpServer, client: AppStoreConnectClien
         if (processing_state) params["filter[processingState]"] = processing_state;
         const { data, included } = await client.getAll("/builds", params);
         const builds = data.map((d) =>
-          shapeResource(d, included, { relationships: ["preReleaseVersion"] }),
+          shapeResource(d, included, {
+            relationships: ["preReleaseVersion", "buildBetaDetail"],
+          }),
         );
         return ok({ count: builds.length, builds });
       } catch (e) {
@@ -85,18 +91,19 @@ export function registerAppTools(server: McpServer, client: AppStoreConnectClien
 
   server.tool(
     "get_build",
-    "Get a single TestFlight build by ID, including its pre-release version.",
+    "Get a single TestFlight build by ID, including its pre-release version and its TestFlight distribution state (buildBetaDetail).",
     { build_id: z.string().describe("Build ID") },
     async ({ build_id }) => {
       try {
         const res = await client.get(`/builds/${encodeURIComponent(build_id)}`, {
-          include: "preReleaseVersion",
-          "fields[builds]": BUILD_FIELDS,
+          include: BUILD_RELATIONSHIPS,
+          "fields[builds]": `${BUILD_FIELDS},${BUILD_RELATIONSHIPS}`,
           "fields[preReleaseVersions]": "version,platform",
+          "fields[buildBetaDetails]": BUILD_BETA_DETAIL_FIELDS,
         });
         return ok(
           shapeResource(res.data as JsonApiResource, res.included ?? [], {
-            relationships: ["preReleaseVersion"],
+            relationships: ["preReleaseVersion", "buildBetaDetail"],
           }),
         );
       } catch (e) {
@@ -107,27 +114,37 @@ export function registerAppTools(server: McpServer, client: AppStoreConnectClien
 
   server.tool(
     "list_customer_reviews",
-    "List public App Store customer reviews for a released app (rating, title, body, reviewer, territory). Distinct from TestFlight beta feedback. Filter by rating or territory.",
+    "List public App Store customer reviews for a released app (rating, title, body, reviewer, territory) together with your published developer response, if any. Distinct from TestFlight beta feedback. Filter by rating or territory, or restrict to reviews that already have a response.",
     {
       app_id: z.string().describe("App Store Connect app ID"),
       rating: z.number().int().min(1).max(5).optional().describe("Filter by star rating (1-5)"),
       territory: z.string().optional().describe("Filter by territory code, e.g. 'USA'"),
+      has_response: z
+        .boolean()
+        .optional()
+        .describe("Only reviews that have (true) or lack (false) a published developer response"),
       limit: z.number().int().min(1).max(200).optional().describe("Max reviews (default: 50)"),
     },
-    async ({ app_id, rating, territory, limit }) => {
+    async ({ app_id, rating, territory, has_response, limit }) => {
       try {
         const params: QueryParams = {
-          "fields[customerReviews]": "rating,title,body,reviewerNickname,createdDate,territory",
+          include: "response",
+          "fields[customerReviews]": `${REVIEW_FIELDS},response`,
+          "fields[customerReviewResponses]": "responseBody,lastModifiedDate,state",
           sort: "-createdDate",
           limit: limit ?? 50,
         };
         if (rating !== undefined) params["filter[rating]"] = rating;
         if (territory) params["filter[territory]"] = territory;
-        const { data } = await client.getAll(
+        if (has_response !== undefined) params["exists[publishedResponse]"] = has_response;
+        const { data, included } = await client.getAll(
           `/apps/${encodeURIComponent(app_id)}/customerReviews`,
           params,
         );
-        return ok({ count: data.length, reviews: data.map((d) => flattenResource(d)) });
+        const reviews = data.map((d) =>
+          shapeResource(d, included, { relationships: ["response"] }),
+        );
+        return ok({ count: reviews.length, reviews });
       } catch (e) {
         return err(e);
       }

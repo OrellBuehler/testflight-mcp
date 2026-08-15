@@ -47,16 +47,19 @@ vendorNumber)`, and connects it over stdio. Each tool calls the App Store Connec
   `.p8` key is loaded lazily on first use (inline or from a file path).
 - **`src/asc/client.ts`** — `AppStoreConnectClient`, a thin `fetch` wrapper over
   `https://api.appstoreconnect.apple.com/v1`. `get`/`getAll` (cursor pagination via `links.next`),
+  `getJson` (raw body + optional extra headers, for the non-JSON:API metrics/diagnostics endpoints),
   `post`, `downloadText`/`downloadBinary` (presigned asset URLs — **no** auth header),
   `downloadGzipText` (analytics segments), `getGzippedReport` (gzipped sales/finance CSV). Throws on
   non-2xx with the response body in the message.
 - **`src/asc/format.ts`** — shared helpers: `ok`/`err` (MCP content envelopes; `ok` passes strings
-  through unquoted), `imageResult`, and JSON:API helpers `singleRef`, `findIncluded`,
+  through unquoted), `imageResult`, and JSON:API helpers `singleRef`, `manyRefs`, `findIncluded`,
   `flattenResource`, `shapeResource` (lift `attributes` to top level + resolve named relationships
   from `included`).
 - **`src/tools/*.ts`** — each exports a `register*Tools(server, client)` function that `server.ts`
-  calls: `feedback`, `apps`, `testers`, `analytics` (also takes the default vendor number),
-  `provisioning`, `metadata`.
+  calls: `feedback`, `apps`, `testflight` (build beta state, "What to Test", TestFlight usage
+  metrics), `testers`, `analytics` (also takes the default vendor number), `provisioning`,
+  `metadata` (App Store versions + review pipeline), `diagnostics` (perf/power metrics, diagnostic
+  signatures and logs), `ci` (Xcode Cloud).
 
 ## Conventions
 
@@ -78,7 +81,8 @@ ok(...); } catch (e) { return err(e); } })`. The third argument is a raw Zod sha
   reference projects): Apple-ID-password browser/Playwright scraping of the internal `iris` API, and
   SMTP "respond to tester" email.
 - **Secrets:** the repo is public. Never log the `.p8` key or tokens; only read them from env. Tests
-  use a locally generated throwaway EC key.
+  use a locally generated throwaway EC key. Review-detail endpoints expose a `demoAccountPassword`
+  field — it is deliberately left out of every `fields[...]` list; don't add it back.
 
 ## Tests
 

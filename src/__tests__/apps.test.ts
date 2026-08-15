@@ -69,6 +69,7 @@ describe("app tools", () => {
             attributes: { version: "42", processingState: "VALID" },
             relationships: {
               preReleaseVersion: { data: { type: "preReleaseVersions", id: "p1" } },
+              buildBetaDetail: { data: { type: "buildBetaDetails", id: "d1" } },
             },
           },
         ],
@@ -78,6 +79,11 @@ describe("app tools", () => {
             id: "p1",
             attributes: { version: "1.2.0", platform: "IOS" },
           },
+          {
+            type: "buildBetaDetails",
+            id: "d1",
+            attributes: { externalBuildState: "READY_FOR_BETA_SUBMISSION" },
+          },
         ],
       }),
     );
@@ -86,18 +92,48 @@ describe("app tools", () => {
     expect(parsed.pathname).toBe("/v1/builds");
     expect(parsed.searchParams.get("filter[app]")).toBe("APP1");
     expect(parsed.searchParams.get("filter[preReleaseVersion.version]")).toBe("1.2.0");
+    expect(parsed.searchParams.get("include")).toBe("preReleaseVersion,buildBetaDetail");
     const payload = JSON.parse(res.content[0].text!);
     expect(payload.builds[0].preReleaseVersion).toMatchObject({
       version: "1.2.0",
       platform: "IOS",
     });
+    expect(payload.builds[0].buildBetaDetail).toMatchObject({
+      externalBuildState: "READY_FOR_BETA_SUBMISSION",
+    });
   });
 
-  it("list_customer_reviews hits the app customerReviews endpoint", async () => {
-    mockFetch.mockResolvedValueOnce(resp({ data: [] }));
-    await tools.get("list_customer_reviews")!({ app_id: "APP1", rating: 1 });
+  it("list_customer_reviews hits the app customerReviews endpoint and resolves responses", async () => {
+    mockFetch.mockResolvedValueOnce(
+      resp({
+        data: [
+          {
+            type: "customerReviews",
+            id: "cr1",
+            attributes: { rating: 1, title: "Crashes" },
+            relationships: { response: { data: { type: "customerReviewResponses", id: "rr1" } } },
+          },
+        ],
+        included: [
+          {
+            type: "customerReviewResponses",
+            id: "rr1",
+            attributes: { responseBody: "Fixed in 1.4.1", state: "PUBLISHED" },
+          },
+        ],
+      }),
+    );
+    const res = await tools.get("list_customer_reviews")!({
+      app_id: "APP1",
+      rating: 1,
+      has_response: true,
+    });
     const parsed = new URL(mockFetch.mock.calls[0][0]);
     expect(parsed.pathname).toBe("/v1/apps/APP1/customerReviews");
     expect(parsed.searchParams.get("filter[rating]")).toBe("1");
+    expect(parsed.searchParams.get("exists[publishedResponse]")).toBe("true");
+    expect(JSON.parse(res.content[0].text!).reviews[0].response).toMatchObject({
+      responseBody: "Fixed in 1.4.1",
+    });
   });
 });

@@ -85,6 +85,15 @@ export class AppStoreConnectClient {
     return res.json() as Promise<JsonApiResponse>;
   }
 
+  async getJson(
+    path: string,
+    params?: QueryParams,
+    headers?: Record<string, string>,
+  ): Promise<unknown> {
+    const res = await this.request(this.buildUrl(path, params), headers ? { headers } : {});
+    return res.json();
+  }
+
   async getAll(
     path: string,
     params?: QueryParams,
