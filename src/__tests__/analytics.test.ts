@@ -72,14 +72,45 @@ describe("analytics tools", () => {
     expect(parsed.searchParams.get("filter[category]")).toBe("APP_USAGE");
   });
 
-  it("download_analytics_report_segment decompresses the segment", async () => {
+  it("download_analytics_report_segment decompresses a segment listed beforehand", async () => {
     const tools = collect();
+    mockFetch.mockResolvedValueOnce(
+      resp({
+        data: [{ type: "analyticsReportSegments", id: "s1", attributes: { url: "https://seg/1" } }],
+      }),
+    );
+    await tools.get("list_analytics_report_segments")!({ report_id: "rep1" });
     mockFetch.mockResolvedValueOnce(gzipResp("date,units\n2026-06-01,5\n"));
     const res = await tools.get("download_analytics_report_segment")!({
       segment_url: "https://seg/1",
     });
-    expect(mockFetch.mock.calls[0][0]).toBe("https://seg/1");
+    expect(mockFetch.mock.calls[1][0]).toBe("https://seg/1");
     expect(res.content[0].text).toBe("date,units\n2026-06-01,5\n");
+  });
+
+  it("download_analytics_report_segment refuses a url Apple never returned", async () => {
+    const tools = collect();
+    const res = await tools.get("download_analytics_report_segment")!({
+      segment_url: "https://attacker.example/steal",
+    });
+    expect(res.isError).toBe(true);
+    expect(res.content[0].text).toContain("list_analytics_report_segments");
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("download_analytics_report_segment does not treat a listed url as a prefix match", async () => {
+    const tools = collect();
+    mockFetch.mockResolvedValueOnce(
+      resp({
+        data: [{ type: "analyticsReportSegments", id: "s1", attributes: { url: "https://seg/1" } }],
+      }),
+    );
+    await tools.get("list_analytics_report_segments")!({ report_id: "rep1" });
+    const res = await tools.get("download_analytics_report_segment")!({
+      segment_url: "https://seg/1.attacker.example/x",
+    });
+    expect(res.isError).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   it("download_sales_report uses the default vendor number and decompresses CSV", async () => {
