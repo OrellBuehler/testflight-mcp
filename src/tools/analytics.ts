@@ -8,6 +8,8 @@ export function registerAnalyticsTools(
   client: AppStoreConnectClient,
   defaultVendorNumber?: string,
 ) {
+  const knownSegmentUrls = new Set<string>();
+
   server.tool(
     "create_analytics_report_request",
     "Create an analytics report request for an app — the required first step to read App Store analytics. Returns a reportRequestId to pass to list_analytics_reports. ONE_TIME_SNAPSHOT requests the latest data once; ONGOING accrues daily data. This creates a request resource but does not modify the app.",
@@ -81,7 +83,12 @@ export function registerAnalyticsTools(
           `/analyticsReports/${encodeURIComponent(report_id)}/segments`,
           { limit: limit ?? 100 },
         );
-        return ok({ count: data.length, segments: data.map((d) => flattenResource(d)) });
+        const segments = data.map((d) => flattenResource(d));
+        for (const segment of segments) {
+          const url = (segment as { url?: unknown }).url;
+          if (typeof url === "string") knownSegmentUrls.add(url);
+        }
+        return ok({ count: segments.length, segments });
       } catch (e) {
         return err(e);
       }
@@ -90,10 +97,15 @@ export function registerAnalyticsTools(
 
   server.tool(
     "download_analytics_report_segment",
-    "Download and decompress an analytics report segment from its presigned url. Returns the report data as CSV/TSV text.",
+    "Download and decompress an analytics report segment from its presigned url. Returns the report data as CSV/TSV text. Call list_analytics_report_segments first — only urls returned by that tool can be downloaded.",
     { segment_url: z.string().describe("The 'url' field of an analytics report segment") },
     async ({ segment_url }) => {
       try {
+        if (!knownSegmentUrls.has(segment_url)) {
+          return err(
+            "Unknown segment url. Call list_analytics_report_segments first and pass a url from its response verbatim.",
+          );
+        }
         return ok(await client.downloadGzipText(segment_url));
       } catch (e) {
         return err(e);

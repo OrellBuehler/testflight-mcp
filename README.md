@@ -145,14 +145,14 @@ Start from `list_apps` to get an `app_id`, then drill into feedback. All tools a
 
 **Analytics & reports**
 
-| Tool                                | Description                                                                  |
-| ----------------------------------- | ---------------------------------------------------------------------------- |
-| `create_analytics_report_request`   | Request an analytics report (the required first step). Returns a request ID. |
-| `list_analytics_reports`            | Reports available for a request, optionally filtered by category.            |
-| `list_analytics_report_segments`    | Downloadable segments of a report (presigned URLs).                          |
-| `download_analytics_report_segment` | Download + decompress a segment to CSV/TSV text.                             |
-| `download_sales_report`             | Sales & Trends report as CSV (needs `ASC_VENDOR_NUMBER`).                    |
-| `download_finance_report`           | Financial report as CSV (needs `ASC_VENDOR_NUMBER` and a region code).       |
+| Tool                                | Description                                                                                            |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `create_analytics_report_request`   | Request an analytics report (the required first step). Returns a request ID.                           |
+| `list_analytics_reports`            | Reports available for a request, optionally filtered by category.                                      |
+| `list_analytics_report_segments`    | Downloadable segments of a report (presigned URLs).                                                    |
+| `download_analytics_report_segment` | Download + decompress a segment to CSV/TSV text (url must come from `list_analytics_report_segments`). |
+| `download_sales_report`             | Sales & Trends report as CSV (needs `ASC_VENDOR_NUMBER`).                                              |
+| `download_finance_report`           | Financial report as CSV (needs `ASC_VENDOR_NUMBER` and a region code).                                 |
 
 **Provisioning & devices**
 
