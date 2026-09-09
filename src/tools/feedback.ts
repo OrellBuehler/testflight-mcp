@@ -182,15 +182,6 @@ const SCREENSHOT_FIELDS =
 const CRASH_FIELDS =
   "createdDate,comment,email,deviceModel,osVersion,locale,timeZone,architecture,connectionType,pairedAppleWatch,appUptimeInMilliseconds,diskBytesAvailable,diskBytesTotal,batteryPercentage,screenWidthInPoints,screenHeightInPoints,appPlatform,devicePlatform,deviceFamily,buildBundleId,crashLog";
 
-function findCrashLogUrl(attrs: Record<string, unknown> | undefined): string | null {
-  const cl = attrs?.crashLog;
-  if (typeof cl === "string") return cl;
-  if (cl && typeof cl === "object" && typeof (cl as { url?: unknown }).url === "string") {
-    return (cl as { url: string }).url;
-  }
-  return null;
-}
-
 export function registerFeedbackTools(server: McpServer, client: AppStoreConnectClient) {
   server.tool(
     "list_screenshot_feedback",
@@ -308,23 +299,20 @@ export function registerFeedbackTools(server: McpServer, client: AppStoreConnect
 
   server.tool(
     "get_crash_log",
-    "Download the crash log text for a crash feedback submission. Resolves the temporary crash-log URL from the submission and fetches its contents.",
+    "Download the crash log text for a crash feedback submission. Reads Apple's betaCrashLogs resource linked to the submission, which carries the full symbolicated .crash text (logText).",
     { feedback_id: z.string().describe("Crash feedback submission ID") },
     async ({ feedback_id }) => {
       try {
         const res = await client.get(
-          `/betaFeedbackCrashSubmissions/${encodeURIComponent(feedback_id)}`,
-          { "fields[betaFeedbackCrashSubmissions]": "crashLog" },
+          `/betaFeedbackCrashSubmissions/${encodeURIComponent(feedback_id)}/crashLog`,
         );
-        const attrs = (res.data as JsonApiResource).attributes;
-        const url = findCrashLogUrl(attrs);
-        if (!url) {
-          return ok({
-            message: "No downloadable crash log URL is present on this submission.",
-            attributes: attrs ?? {},
-          });
-        }
-        return ok(await client.downloadText(url));
+        const attrs = (res.data as JsonApiResource | null)?.attributes;
+        const text = attrs?.logText;
+        if (typeof text === "string" && text.length > 0) return ok(text);
+        return ok({
+          message: "No crash log is attached to this submission.",
+          attributes: attrs ?? {},
+        });
       } catch (e) {
         return err(e);
       }

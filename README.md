@@ -204,9 +204,9 @@ Start from `list_apps` to get an `app_id`, then drill into feedback. All tools a
 - **TestFlight feedback** requires builds uploaded with feedback enabled and is retained by Apple for
   a limited window (~90 days). The tester's typed comment is the `comment` field on a screenshot
   submission.
-- **Crash logs** are resolved from the submission's crash-log URL and downloaded as text. If Apple
-  exposes no download URL for a given submission, `get_crash_log` returns the raw attributes so you
-  can see what's available.
+- **Crash logs** come from Apple's `betaCrashLogs` resource linked to each crash submission
+  (`GET /betaFeedbackCrashSubmissions/{id}/crashLog`), whose `logText` is the full symbolicated
+  `.crash` report. `get_crash_log` returns that text; if a submission has no log attached it says so.
 - **Reports** (`download_sales_report` / `download_finance_report`) are gzipped CSV decompressed for
   you, and need the **Finance** role on the API key plus `ASC_VENDOR_NUMBER`.
 - **Power & performance** data (`get_perf_power_metrics`, `list_diagnostic_signatures`,

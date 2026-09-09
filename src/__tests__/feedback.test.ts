@@ -257,36 +257,29 @@ describe("feedback tools", () => {
     });
   });
 
-  it("get_crash_log resolves the crash log URL and downloads its text", async () => {
-    mockFetch
-      .mockResolvedValueOnce(
-        resp({
-          data: {
-            type: "betaFeedbackCrashSubmissions",
-            id: "c1",
-            attributes: { crashLog: { url: "https://logs/c1.crash" } },
-          },
-        }),
-      )
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        headers: new Headers(),
-        text: () => Promise.resolve("Thread 0 crashed"),
-      });
+  it("get_crash_log reads the linked betaCrashLogs resource's logText", async () => {
+    mockFetch.mockResolvedValueOnce(
+      resp({
+        data: {
+          type: "betaCrashLogs",
+          id: "log1",
+          attributes: { logText: "Incident Identifier: X\nThread 0 crashed" },
+        },
+      }),
+    );
     const res = await tools.get("get_crash_log")!({ feedback_id: "c1" });
-    expect(mockFetch.mock.calls[1][0]).toBe("https://logs/c1.crash");
-    expect(res.content[0].text).toBe("Thread 0 crashed");
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(String(mockFetch.mock.calls[0][0])).toBe(
+      "https://api.appstoreconnect.apple.com/v1/betaFeedbackCrashSubmissions/c1/crashLog",
+    );
+    expect(res.content[0].text).toBe("Incident Identifier: X\nThread 0 crashed");
   });
 
-  it("get_crash_log reports when no crash log URL is present", async () => {
-    mockFetch.mockResolvedValueOnce(
-      resp({ data: { type: "betaFeedbackCrashSubmissions", id: "c2", attributes: {} } }),
-    );
+  it("get_crash_log reports when no crash log is attached", async () => {
+    mockFetch.mockResolvedValueOnce(resp({ data: null }));
     const res = await tools.get("get_crash_log")!({ feedback_id: "c2" });
     expect(mockFetch).toHaveBeenCalledTimes(1);
-    expect(res.content[0].text).toContain("No downloadable crash log");
+    expect(res.content[0].text).toContain("No crash log is attached");
   });
 
   it("returns an MCP error when the API call fails", async () => {
