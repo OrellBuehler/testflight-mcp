@@ -122,6 +122,33 @@ export class AppStoreConnectClient {
     return res.json() as Promise<JsonApiResponse>;
   }
 
+  async patch(path: string, body: unknown): Promise<JsonApiResponse> {
+    const res = await this.request(this.buildUrl(path), {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+    return res.json() as Promise<JsonApiResponse>;
+  }
+
+  async delete(path: string): Promise<void> {
+    await this.request(this.buildUrl(path), { method: "DELETE" });
+  }
+
+  async uploadPart(
+    url: string,
+    method: string,
+    headers: Record<string, string>,
+    body: Uint8Array,
+  ): Promise<void> {
+    const res = await fetch(url, {
+      method,
+      headers,
+      body: new Uint8Array(body),
+      signal: AbortSignal.timeout(this.timeoutMs),
+    });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}: failed to upload part`);
+  }
+
   async downloadText(url: string): Promise<string> {
     const res = await fetch(url, { signal: AbortSignal.timeout(this.timeoutMs) });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}: failed to download ${url}`);

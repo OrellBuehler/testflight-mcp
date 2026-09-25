@@ -10,6 +10,8 @@ import { registerMetadataTools } from "./tools/metadata.js";
 import { registerTestFlightTools } from "./tools/testflight.js";
 import { registerDiagnosticsTools } from "./tools/diagnostics.js";
 import { registerCiTools } from "./tools/ci.js";
+import { registerScreenshotTools } from "./tools/screenshots.js";
+import { registerListingTools } from "./tools/listing.js";
 
 const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
 
@@ -24,5 +26,7 @@ export function createServer(client: AppStoreConnectClient, vendorNumber?: strin
   registerMetadataTools(server, client);
   registerDiagnosticsTools(server, client);
   registerCiTools(server, client);
+  registerScreenshotTools(server, client);
+  registerListingTools(server, client);
   return server;
 }

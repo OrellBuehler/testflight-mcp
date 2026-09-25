@@ -13,7 +13,8 @@ Its focus is **TestFlight beta feedback retrieval** — pulling the screenshot f
 tester's comment), crash feedback and crash logs your testers submit — plus the surrounding context
 an agent needs to make sense of it: apps, builds, beta testers/groups, analytics & sales reports,
 provisioning, and App Store metadata. It talks **only to the official, documented API** using a
-standard App Store Connect API key (ES256 JWT), and is **read-only**.
+standard App Store Connect API key (ES256 JWT), and is **read-only** apart from the App Store listing:
+App Information, product page text and screenshots.
 
 > It deliberately does **not** scrape App Store Connect with your Apple ID / password (no headless
 > browser, no internal `iris` API) and does **not** send email to testers. Some third-party
@@ -103,7 +104,8 @@ Once connected, ask the agent things like:
 
 ## Tools
 
-Start from `list_apps` to get an `app_id`, then drill into feedback. All tools are read-only.
+Start from `list_apps` to get an `app_id`, then drill into feedback. All tools are read-only except the
+`update_*` listing tools and `upload_app_screenshots`.
 
 **TestFlight feedback**
 
@@ -171,6 +173,26 @@ Start from `list_apps` to get an `app_id`, then drill into feedback. All tools a
 | `list_app_store_version_localizations` | Per-locale metadata (description, keywords, what's new, URLs). |
 | `get_app_store_version_localization`   | One localization by ID.                                        |
 
+**App Information & product page (writes)**
+
+| Tool                                    | Description                                                                                                    |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `get_app_info`                          | App Information: primary locale, content rights, per-locale name/subtitle/privacy URL, categories, age rating. |
+| `list_app_categories`                   | Category and subcategory IDs.                                                                                  |
+| `update_app`                            | **Writes.** Content rights declaration, primary locale.                                                        |
+| `update_app_info`                       | **Writes.** Primary/secondary categories.                                                                      |
+| `update_app_info_localization`          | **Writes.** Name, subtitle, privacy policy/choices URL per locale (creates the locale if missing).             |
+| `update_age_rating_declaration`         | **Writes.** Age rating questionnaire answers.                                                                  |
+| `update_app_store_version`              | **Writes.** Version string, copyright, release type.                                                           |
+| `update_app_store_version_localization` | **Writes.** Description, keywords, promotional text, what's new, URLs (creates the locale if missing).         |
+
+**App Store screenshots**
+
+| Tool                       | Description                                                                                                  |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `list_app_screenshot_sets` | Screenshot sets of a localization (one per display type) with their screenshots and processing state.        |
+| `upload_app_screenshots`   | **Writes.** Uploads local PNG/JPEG files to one display type, in order; optionally replaces the current set. |
+
 **App Review pipeline**
 
 | Tool                           | Description                                                                                                |
@@ -198,9 +220,10 @@ Start from `list_apps` to get an `app_id`, then drill into feedback. All tools a
 
 ## Notes & caveats
 
-- **Read-only.** The server cannot add/remove testers, edit metadata, or submit apps. The only `POST`
-  is `create_analytics_report_request`, which requests an analytics snapshot so the data can be read;
-  it does not change your app.
+- **Read-only, except the App Store listing.** The server cannot add/remove testers, attach builds,
+  or submit apps. The `update_*` listing tools (App Information, age rating, version text) and
+  `upload_app_screenshots` change App Store Connect; nothing else does. `create_analytics_report_request`
+  only requests an analytics snapshot so the data can be read; it does not change your app.
 - **TestFlight feedback** requires builds uploaded with feedback enabled and is retained by Apple for
   a limited window (~90 days). The tester's typed comment is the `comment` field on a screenshot
   submission.
