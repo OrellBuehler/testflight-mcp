@@ -89,12 +89,10 @@ export function registerMetadataTools(server: McpServer, client: AppStoreConnect
     },
     async ({ version_id, limit }) => {
       try {
-        const params: QueryParams = {
-          "filter[appStoreVersion]": version_id,
-          "fields[appStoreVersionLocalizations]": LOCALIZATION_FIELDS,
-          limit: limit ?? 100,
-        };
-        const { data } = await client.getAll("/appStoreVersionLocalizations", params);
+        const { data } = await client.getAll(
+          `/appStoreVersions/${encodeURIComponent(version_id)}/appStoreVersionLocalizations`,
+          { "fields[appStoreVersionLocalizations]": LOCALIZATION_FIELDS, limit: limit ?? 100 },
+        );
         return ok({ count: data.length, localizations: data.map((d) => flattenResource(d)) });
       } catch (e) {
         return err(e);

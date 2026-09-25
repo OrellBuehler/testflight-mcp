@@ -52,8 +52,7 @@ describe("metadata tools", () => {
     mockFetch.mockResolvedValueOnce(resp({ data: [] }));
     await tools.get("list_app_store_version_localizations")!({ version_id: "V1" });
     const parsed = new URL(mockFetch.mock.calls[0][0]);
-    expect(parsed.pathname).toBe("/v1/appStoreVersionLocalizations");
-    expect(parsed.searchParams.get("filter[appStoreVersion]")).toBe("V1");
+    expect(parsed.pathname).toBe("/v1/appStoreVersions/V1/appStoreVersionLocalizations");
   });
 
   it("get_app_store_version_localization fetches by id", async () => {

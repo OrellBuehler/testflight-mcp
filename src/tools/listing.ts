@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import type { AppStoreConnectClient, JsonApiResource, QueryParams } from "../asc/client.js";
+import type { AppStoreConnectClient, JsonApiResource } from "../asc/client.js";
 import { ok, err, flattenResource, shapeResource, manyRefs, findIncluded } from "../asc/format.js";
 
 const APP_FIELDS = "name,bundleId,sku,primaryLocale,contentRightsDeclaration";
@@ -275,12 +275,10 @@ export function registerListingTools(server: McpServer, client: AppStoreConnectC
           supportUrl: args.support_url,
           marketingUrl: args.marketing_url,
         });
-        const params: QueryParams = {
-          "filter[appStoreVersion]": args.version_id,
-          "fields[appStoreVersionLocalizations]": "locale",
-          limit: 200,
-        };
-        const { data } = await client.getAll("/appStoreVersionLocalizations", params);
+        const { data } = await client.getAll(
+          `/appStoreVersions/${encodeURIComponent(args.version_id)}/appStoreVersionLocalizations`,
+          { "fields[appStoreVersionLocalizations]": "locale", limit: 200 },
+        );
         const existing = data.find((l) => l.attributes?.locale === args.locale);
         const res = existing
           ? await client.patch(`/appStoreVersionLocalizations/${encodeURIComponent(existing.id)}`, {
