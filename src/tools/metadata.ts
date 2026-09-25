@@ -57,14 +57,16 @@ export function registerMetadataTools(server: McpServer, client: AppStoreConnect
     async ({ app_id, platform, version, app_store_state, limit }) => {
       try {
         const params: QueryParams = {
-          "filter[app]": app_id,
           "fields[appStoreVersions]": VERSION_FIELDS,
           limit: limit ?? 100,
         };
         if (platform) params["filter[platform]"] = platform;
         if (version) params["filter[versionString]"] = version;
         if (app_store_state) params["filter[appStoreState]"] = app_store_state;
-        const { data } = await client.getAll("/appStoreVersions", params);
+        const { data } = await client.getAll(
+          `/apps/${encodeURIComponent(app_id)}/appStoreVersions`,
+          params,
+        );
         return ok({ count: data.length, versions: data.map((d) => flattenResource(d)) });
       } catch (e) {
         return err(e);

@@ -43,8 +43,7 @@ describe("metadata tools", () => {
       app_store_state: "READY_FOR_SALE",
     });
     const parsed = new URL(mockFetch.mock.calls[0][0]);
-    expect(parsed.pathname).toBe("/v1/appStoreVersions");
-    expect(parsed.searchParams.get("filter[app]")).toBe("APP1");
+    expect(parsed.pathname).toBe("/v1/apps/APP1/appStoreVersions");
     expect(parsed.searchParams.get("filter[appStoreState]")).toBe("READY_FOR_SALE");
     expect(JSON.parse(res.content[0].text!).versions[0].versionString).toBe("1.0");
   });
