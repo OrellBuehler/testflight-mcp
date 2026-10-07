@@ -1,5 +1,6 @@
 {
   "name": "@orellbuehler/testflight-mcp",
+  "private": true,
   "version": "0.4.0",
   "description": "Model Context Protocol server for TestFlight & App Store Connect: retrieve beta tester feedback (screenshots, crashes, crash logs), builds, testers, analytics and provisioning over the official App Store Connect API.",
   "type": "module",
@@ -15,6 +16,7 @@
     "start": "node dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
+    "mcp:tunnel": "node scripts/tunnel.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "format": "prettier --write .",
@@ -39,15 +41,9 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/OrellBuehler/testflight-mcp.git"
+    "url": "git+https://github.com/kamiteku557/testflight-mcp.git"
   },
-  "homepage": "https://github.com/OrellBuehler/testflight-mcp#readme",
-  "bugs": {
-    "url": "https://github.com/OrellBuehler/testflight-mcp/issues"
-  },
-  "publishConfig": {
-    "access": "public"
-  },
+  "homepage": "https://github.com/kamiteku557/testflight-mcp#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
     "jose": "^6.0.11",

@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AppStoreConnectClient, QueryParams } from "../asc/client.js";
 import { ok, err, shapeResource, flattenResource } from "../asc/format.js";
+import { retrieveCiLog } from "../ci/log_bundle.js";
 
 const PRODUCT_FIELDS = "name,createdDate,productType";
 const BUILD_RUN_FIELDS =
@@ -10,9 +11,13 @@ const BUILD_RUN_RELATIONSHIPS = "workflow,sourceBranchOrTag,pullRequest";
 const ACTION_FIELDS =
   "name,actionType,startedDate,finishedDate,issueCounts,executionProgress,completionStatus,isRequiredToPass";
 const ISSUE_FIELDS = "issueType,message,fileSource,category";
-const ARTIFACT_FIELDS = "fileType,fileName,fileSize,downloadUrl";
+const ARTIFACT_FIELDS = "fileType,fileName,fileSize";
 
-export function registerCiTools(server: McpServer, client: AppStoreConnectClient) {
+export function registerCiTools(
+  server: McpServer,
+  client: AppStoreConnectClient,
+  options: { artifactRoot?: string; timeoutMs?: number; fetcher?: typeof fetch } = {},
+) {
   server.tool(
     "list_ci_products",
     "List the Xcode Cloud products in the account (name, product type, created date, related app). Use the returned id as product_id for list_ci_build_runs.",
@@ -119,7 +124,7 @@ export function registerCiTools(server: McpServer, client: AppStoreConnectClient
 
   server.tool(
     "list_ci_artifacts",
-    "List the artifacts a build action produced (logs, archives, test results) with file name, type, size and a download URL.",
+    "List build artifact metadata. Download URLs are intentionally not exposed. Use get_ci_log to inspect a LOG_BUNDLE.",
     {
       build_action_id: z
         .string()
@@ -132,9 +137,95 @@ export function registerCiTools(server: McpServer, client: AppStoreConnectClient
           `/ciBuildActions/${encodeURIComponent(build_action_id)}/artifacts`,
           { "fields[ciArtifacts]": ARTIFACT_FIELDS, limit: limit ?? 50 },
         );
-        return ok({ count: data.length, artifacts: data.map((d) => flattenResource(d)) });
+        const artifacts = data.map((d) => {
+          const resource = flattenResource(d);
+          if (!resource) return resource;
+          delete resource.downloadUrl;
+          return resource;
+        });
+        return ok({ count: artifacts.length, artifacts });
       } catch (e) {
         return err(e);
+      }
+    },
+  );
+
+  server.tool(
+    "get_ci_log",
+    "Safely download and inspect the LOG_BUNDLE for an Xcode Cloud build action. Signed URLs are never returned. Text output is redacted and bounded to the requested tail lines.",
+    {
+      build_action_id: z
+        .string()
+        .describe("Xcode Cloud build action ID (from list_ci_build_actions)"),
+      max_lines: z
+        .number()
+        .int()
+        .min(1)
+        .max(5000)
+        .optional()
+        .describe("Maximum tail lines per log file (default: 2000; maximum: 5000)"),
+    },
+    async ({ build_action_id, max_lines }) => {
+      try {
+        const actionResponse = await client.get(
+          `/ciBuildActions/${encodeURIComponent(build_action_id)}`,
+          {
+            "fields[ciBuildActions]": "name,completionStatus,actionType",
+          },
+        );
+        const action = Array.isArray(actionResponse.data)
+          ? actionResponse.data[0]
+          : actionResponse.data;
+        const actionName = String(action?.attributes?.name ?? "");
+        const { data } = await client.getAll(
+          `/ciBuildActions/${encodeURIComponent(build_action_id)}/artifacts`,
+          { "fields[ciArtifacts]": "fileType,fileName,fileSize", limit: 200 },
+        );
+        const logBundle = data.find((resource) => resource.attributes?.fileType === "LOG_BUNDLE");
+        if (!logBundle) return err("No LOG_BUNDLE artifact was found for this build action.");
+
+        const detailResponse = await client.get(
+          `/ciArtifacts/${encodeURIComponent(logBundle.id)}`,
+          {
+            "fields[ciArtifacts]": "fileType,fileName,fileSize,downloadUrl",
+          },
+        );
+        const detail = Array.isArray(detailResponse.data)
+          ? detailResponse.data[0]
+          : detailResponse.data;
+        const attributes = detail?.attributes;
+        const downloadUrl =
+          typeof attributes?.downloadUrl === "string" ? attributes.downloadUrl : "";
+        if (!downloadUrl || attributes?.fileType !== "LOG_BUNDLE") {
+          return err("The LOG_BUNDLE artifact metadata is unavailable.");
+        }
+        const fileSizeValue = attributes.fileSize;
+        const fileSize =
+          typeof fileSizeValue === "number"
+            ? fileSizeValue
+            : typeof fileSizeValue === "string" && /^\d+$/u.test(fileSizeValue)
+              ? Number(fileSizeValue)
+              : undefined;
+        const artifact = await retrieveCiLog(
+          {
+            id: detail.id,
+            fileName: typeof attributes.fileName === "string" ? attributes.fileName : undefined,
+            fileSize,
+            downloadUrl,
+          },
+          max_lines ?? 2000,
+          actionName,
+          options,
+        );
+        return ok({
+          buildActionId: build_action_id,
+          artifact: artifact.artifact,
+          logs: artifact.logs,
+        });
+      } catch {
+        return err(
+          "Could not safely retrieve the Xcode Cloud LOG_BUNDLE. Check artifact availability and retry.",
+        );
       }
     },
   );

@@ -1,8 +1,6 @@
 # testflight-mcp
 
-[![npm](https://img.shields.io/npm/v/@orellbuehler/testflight-mcp.svg)](https://www.npmjs.com/package/@orellbuehler/testflight-mcp)
-[![CI](https://github.com/OrellBuehler/testflight-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/OrellBuehler/testflight-mcp/actions/workflows/ci.yml)
-[![node](https://img.shields.io/node/v/@orellbuehler/testflight-mcp.svg)](https://nodejs.org)
+[![CI](https://github.com/kamiteku557/testflight-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/kamiteku557/testflight-mcp/actions/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 
 MCP server for **TestFlight** and **App Store Connect** that exposes the
@@ -20,22 +18,41 @@ App Information, product page text and screenshots.
 > browser, no internal `iris` API) and does **not** send email to testers. Some third-party
 > TestFlight servers do; this one stays on the supported API.
 
-## Install
+## Local fork runtime
 
-The package is published as
-[`@orellbuehler/testflight-mcp`](https://www.npmjs.com/package/@orellbuehler/testflight-mcp) and runs
-directly with `npx` — no clone or build needed:
+This fork is the source of truth for the local TestFlight MCP runtime. It is not published to npm and
+does not use the upstream npm package at runtime. Clone the fork into the stable Developer path:
 
 ```bash
-claude mcp add testflight \
-  --env ASC_KEY_ID=ABCD123456 \
-  --env ASC_ISSUER_ID=12a3b456-7890-1234-5678-9abcdef01234 \
-  --env ASC_PRIVATE_KEY_PATH=/path/to/AuthKey_ABCD123456.p8 \
-  -- npx -y @orellbuehler/testflight-mcp
+git clone https://github.com/kamiteku557/testflight-mcp.git "$HOME/Developer/testflight-mcp"
+cd "$HOME/Developer/testflight-mcp"
+git remote add upstream https://github.com/OrellBuehler/testflight-mcp.git
+npm ci
+npm run build
 ```
 
-For any other MCP client, run the package directly — `npx -y @orellbuehler/testflight-mcp` with the
-env vars below set. Requires Node.js 20+.
+Upstream changes are brought in manually when needed. There is no automatic sync job. `npm run
+mcp:tunnel -- configure` copies the current App Store Connect credentials, TestFlight tunnel profile,
+and existing Tunnel Runtime key into ignored, owner-only files under `.local/`; it leaves the source
+files in place and updates the copied MCP command to this checkout's `dist/index.js`. If the Runtime
+API key only exists in the old profile, `configure` also copies it into the private runtime key file.
+The `on` command rejects an upstream `npx` target.
+
+Manage the user LaunchAgent with:
+
+```bash
+npm run mcp:tunnel -- on
+npm run mcp:tunnel -- off
+npm run mcp:tunnel -- restart
+npm run mcp:tunnel -- toggle
+npm run mcp:tunnel -- status
+npm run mcp:tunnel -- logs
+```
+
+The LaunchAgent plist is the only runtime file outside the checkout. Credentials, the tunnel
+profile, Runtime API key, temporary artifacts and bounded logs live under ignored `.local/`. The
+`configure` command copies rather than removes the previous files. Node.js 20+ and `tunnel-client`
+must already be installed.
 
 ## Getting an API key
 
@@ -84,8 +101,8 @@ Add the server to `~/.claude/settings.json` (or a project `.mcp.json`):
 }
 ```
 
-If you built from source instead, use `"command": "node"` with
-`"args": ["/path/to/testflight-mcp/dist/index.js"]`. Restart Claude Code and verify with
+For a direct local MCP client, use `"command": "node"` with
+`"args": ["/absolute/path/to/testflight-mcp/dist/index.js"]`. Restart Claude Code and verify with
 `claude mcp list` (should show `testflight ✓ connected`) or `/mcp` inside a session.
 
 ### Example prompts
@@ -216,7 +233,8 @@ Start from `list_apps` to get an `app_id`, then drill into feedback. All tools a
 | `list_ci_build_runs`    | Build runs for a product or workflow (number, status, commit, branch/PR).           |
 | `list_ci_build_actions` | The actions of a build run (build, test, analyze, archive) with their status.       |
 | `list_ci_issues`        | Errors, warnings and test failures for a build action — what to read when CI fails. |
-| `list_ci_artifacts`     | Artifacts of a build action (logs, archives, test results) with download URLs.      |
+| `list_ci_artifacts`     | Artifact metadata for a build action. Signed download URLs are not exposed.         |
+| `get_ci_log`            | Safely download, extract, redact and return bounded text from a LOG_BUNDLE.         |
 
 ## Notes & caveats
 
@@ -237,6 +255,9 @@ Start from `list_apps` to get an `app_id`, then drill into feedback. All tools a
   analytics, is iOS-only, and is empty for apps with too little usage to anonymize.
 - **Demo account passwords** are never requested: `get_beta_app_review_detail` and
   `get_app_store_version_status` deliberately omit the `demoAccountPassword` field.
+- **Xcode Cloud logs** are downloaded privately with size and timeout limits, extracted with ZIP
+  path/type/size/CRC checks, and returned as bounded redacted text. Signed URLs and local absolute
+  paths are not part of the MCP response.
 - **Your data goes to the agent/LLM.** Feedback includes tester names, emails and device details. Use
   an API key scoped to the access you actually want.
 
@@ -261,18 +282,8 @@ npx vitest run src/__tests__/feedback.test.ts
 
 - **CI** (`.github/workflows/ci.yml`) runs on every push to `main` and on pull requests:
   `format:check`, `lint`, `typecheck` (once) and `test` + `build` on Node 20 and 22.
-- **Publish** (`.github/workflows/publish.yml`) runs when a GitHub Release is published. It builds,
-  tests, and publishes to npm using [trusted publishing](https://docs.npmjs.com/trusted-publishers)
-  (OIDC) — **no `NPM_TOKEN` secret required**, with provenance generated automatically. It skips
-  publishing if that version is already on npm.
 
-Cut a release:
-
-```bash
-npm version patch          # bumps package.json + creates a vX.Y.Z tag (use minor/major as needed)
-git push --follow-tags
-gh release create "v$(node -p "require('./package.json').version")" --generate-notes
-```
+This fork intentionally has no npm publishing workflow. Its runtime executes the local build.
 
 ## License
 
