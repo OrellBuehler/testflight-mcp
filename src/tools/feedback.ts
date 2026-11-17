@@ -10,6 +10,7 @@ import {
   findIncluded,
   flattenResource,
 } from "../asc/format.js";
+import { READ_ONLY, UNTRUSTED_NOTE } from "./shared.js";
 
 const PLATFORM = z.enum(["IOS", "MAC_OS", "TV_OS", "VISION_OS"]);
 const TESTER_FIELDS = "firstName,lastName,email";
@@ -185,8 +186,10 @@ const CRASH_FIELDS =
 export function registerFeedbackTools(server: McpServer, client: AppStoreConnectClient) {
   server.tool(
     "list_screenshot_feedback",
-    "List TestFlight screenshot feedback submissions for an app. Each submission includes the tester's comment (the actual feedback text), the screenshot asset URL(s), device/OS details, and the resolved tester and build. The build carries its build number (build.version) and the TestFlight/marketing version (build.preReleaseVersion.version, e.g. '1.2.0'). By default only the latest pre-release version's feedback is returned (set app_version to a specific version or 'all'). Filter by build, platform, device, OS or tester.",
+    "List TestFlight screenshot feedback submissions for an app. Each submission includes the tester's comment (the actual feedback text), the screenshot asset URL(s), device/OS details, and the resolved tester and build. The build carries its build number (build.version) and the TestFlight/marketing version (build.preReleaseVersion.version, e.g. '1.2.0'). By default only the latest pre-release version's feedback is returned (set app_version to a specific version or 'all'). Filter by build, platform, device, OS or tester." +
+      UNTRUSTED_NOTE,
     listShape,
+    READ_ONLY,
     async (args) => {
       try {
         return await listFeedback(
@@ -204,8 +207,10 @@ export function registerFeedbackTools(server: McpServer, client: AppStoreConnect
 
   server.tool(
     "list_crash_feedback",
-    "List TestFlight crash feedback submissions for an app. Each submission includes any tester comment, device/OS details, the resolved tester and build, and a reference to the downloadable crash log (use get_crash_log). The build carries its build number (build.version) and the TestFlight/marketing version (build.preReleaseVersion.version, e.g. '1.2.0'). By default only the latest pre-release version's feedback is returned (set app_version to a specific version or 'all'). Filter by build, platform, device, OS or tester.",
+    "List TestFlight crash feedback submissions for an app. Each submission includes any tester comment, device/OS details, the resolved tester and build, and a reference to the downloadable crash log (use get_crash_log). The build carries its build number (build.version) and the TestFlight/marketing version (build.preReleaseVersion.version, e.g. '1.2.0'). By default only the latest pre-release version's feedback is returned (set app_version to a specific version or 'all'). Filter by build, platform, device, OS or tester." +
+      UNTRUSTED_NOTE,
     listShape,
+    READ_ONLY,
     async (args) => {
       try {
         return await listFeedback(
@@ -223,7 +228,8 @@ export function registerFeedbackTools(server: McpServer, client: AppStoreConnect
 
   server.tool(
     "get_screenshot_feedback",
-    "Get a single screenshot feedback submission by ID, including the tester comment, full device metadata, resolved tester and build (with build.version and the TestFlight version build.preReleaseVersion.version), and screenshot asset URLs. Set download_screenshot to also return the first screenshot inline as an image.",
+    "Get a single screenshot feedback submission by ID, including the tester comment, full device metadata, resolved tester and build (with build.version and the TestFlight version build.preReleaseVersion.version), and screenshot asset URLs. Set download_screenshot to also return the first screenshot inline as an image." +
+      UNTRUSTED_NOTE,
     {
       feedback_id: z.string().describe("Screenshot feedback submission ID"),
       download_screenshot: z
@@ -231,6 +237,7 @@ export function registerFeedbackTools(server: McpServer, client: AppStoreConnect
         .optional()
         .describe("Download and return the first screenshot inline as an image (default: false)"),
     },
+    READ_ONLY,
     async ({ feedback_id, download_screenshot }) => {
       try {
         const res = await client.get(
@@ -269,8 +276,10 @@ export function registerFeedbackTools(server: McpServer, client: AppStoreConnect
 
   server.tool(
     "get_crash_feedback",
-    "Get a single crash feedback submission by ID, including any tester comment, full device metadata, resolved tester and build (with build.version and the TestFlight version build.preReleaseVersion.version), and the crash log reference. Use get_crash_log to download the crash log text.",
+    "Get a single crash feedback submission by ID, including any tester comment, full device metadata, resolved tester and build (with build.version and the TestFlight version build.preReleaseVersion.version), and the crash log reference. Use get_crash_log to download the crash log text." +
+      UNTRUSTED_NOTE,
     { feedback_id: z.string().describe("Crash feedback submission ID") },
+    READ_ONLY,
     async ({ feedback_id }) => {
       try {
         const res = await client.get(
@@ -299,8 +308,10 @@ export function registerFeedbackTools(server: McpServer, client: AppStoreConnect
 
   server.tool(
     "get_crash_log",
-    "Download the crash log text for a crash feedback submission. Reads Apple's betaCrashLogs resource linked to the submission, which carries the full symbolicated .crash text (logText).",
+    "Download the crash log text for a crash feedback submission. Reads Apple's betaCrashLogs resource linked to the submission, which carries the full symbolicated .crash text (logText)." +
+      UNTRUSTED_NOTE,
     { feedback_id: z.string().describe("Crash feedback submission ID") },
+    READ_ONLY,
     async ({ feedback_id }) => {
       try {
         const res = await client.get(

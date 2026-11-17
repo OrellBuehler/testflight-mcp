@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AppStoreConnectClient, JsonApiResource, QueryParams } from "../asc/client.js";
 import { ok, err, flattenResource } from "../asc/format.js";
+import { CREATE, READ_ONLY } from "./shared.js";
 
 export function registerAnalyticsTools(
   server: McpServer,
@@ -20,6 +21,7 @@ export function registerAnalyticsTools(
         .optional()
         .describe("Report access type (default: ONE_TIME_SNAPSHOT)"),
     },
+    CREATE,
     async ({ app_id, access_type }) => {
       try {
         const res = await client.post("/analyticsReportRequests", {
@@ -55,6 +57,7 @@ export function registerAnalyticsTools(
         .describe("Filter reports by category"),
       limit: z.number().int().min(1).max(200).optional().describe("Max reports (default: 100)"),
     },
+    READ_ONLY,
     async ({ report_request_id, category, limit }) => {
       try {
         const params: QueryParams = { limit: limit ?? 100 };
@@ -77,6 +80,7 @@ export function registerAnalyticsTools(
       report_id: z.string().describe("Analytics report ID from list_analytics_reports"),
       limit: z.number().int().min(1).max(200).optional().describe("Max segments (default: 100)"),
     },
+    READ_ONLY,
     async ({ report_id, limit }) => {
       try {
         const { data } = await client.getAll(
@@ -99,6 +103,7 @@ export function registerAnalyticsTools(
     "download_analytics_report_segment",
     "Download and decompress an analytics report segment from its presigned url. Returns the report data as CSV/TSV text. Call list_analytics_report_segments first — only urls returned by that tool can be downloaded.",
     { segment_url: z.string().describe("The 'url' field of an analytics report segment") },
+    READ_ONLY,
     async ({ segment_url }) => {
       try {
         if (!knownSegmentUrls.has(segment_url)) {
@@ -147,6 +152,7 @@ export function registerAnalyticsTools(
         .optional()
         .describe("Report version, e.g. '1_0' or '1_1' (some report types require it)"),
     },
+    READ_ONLY,
     async ({ report_date, frequency, report_type, report_sub_type, vendor_number, version }) => {
       try {
         const vendor = vendor_number ?? defaultVendorNumber;
@@ -182,6 +188,7 @@ export function registerAnalyticsTools(
         .describe("Report type (default: FINANCIAL)"),
       vendor_number: z.string().optional().describe("Overrides ASC_VENDOR_NUMBER"),
     },
+    READ_ONLY,
     async ({ report_date, region_code, report_type, vendor_number }) => {
       try {
         const vendor = vendor_number ?? defaultVendorNumber;

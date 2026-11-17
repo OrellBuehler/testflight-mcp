@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AppStoreConnectClient, JsonApiResource, QueryParams } from "../asc/client.js";
 import { ok, err, shapeResource, flattenResource } from "../asc/format.js";
+import { READ_ONLY, UNTRUSTED_NOTE } from "./shared.js";
 
 const APP_FIELDS = "name,bundleId,sku,primaryLocale";
 const BUILD_FIELDS = "version,uploadedDate,expirationDate,expired,minOsVersion,processingState";
@@ -23,6 +24,7 @@ export function registerAppTools(server: McpServer, client: AppStoreConnectClien
         .optional()
         .describe("Max apps to return (default: 100)"),
     },
+    READ_ONLY,
     async ({ bundle_id, limit }) => {
       try {
         const params: QueryParams = { "fields[apps]": APP_FIELDS, limit: limit ?? 100 };
@@ -39,6 +41,7 @@ export function registerAppTools(server: McpServer, client: AppStoreConnectClien
     "get_app",
     "Get a single app by ID (name, bundleId, sku, primaryLocale).",
     { app_id: z.string().describe("App Store Connect app ID") },
+    READ_ONLY,
     async ({ app_id }) => {
       try {
         const res = await client.get(`/apps/${encodeURIComponent(app_id)}`, {
@@ -63,6 +66,7 @@ export function registerAppTools(server: McpServer, client: AppStoreConnectClien
         .describe("Filter by processing state"),
       limit: z.number().int().min(1).max(200).optional().describe("Max builds (default: 25)"),
     },
+    READ_ONLY,
     async ({ app_id, version, processing_state, limit }) => {
       try {
         const params: QueryParams = {
@@ -93,6 +97,7 @@ export function registerAppTools(server: McpServer, client: AppStoreConnectClien
     "get_build",
     "Get a single TestFlight build by ID, including its pre-release version and its TestFlight distribution state (buildBetaDetail).",
     { build_id: z.string().describe("Build ID") },
+    READ_ONLY,
     async ({ build_id }) => {
       try {
         const res = await client.get(`/builds/${encodeURIComponent(build_id)}`, {
@@ -114,7 +119,8 @@ export function registerAppTools(server: McpServer, client: AppStoreConnectClien
 
   server.tool(
     "list_customer_reviews",
-    "List public App Store customer reviews for a released app (rating, title, body, reviewer, territory) together with your published developer response, if any. Distinct from TestFlight beta feedback. Filter by rating or territory, or restrict to reviews that already have a response.",
+    "List public App Store customer reviews for a released app (rating, title, body, reviewer, territory) together with your published developer response, if any. Distinct from TestFlight beta feedback. Filter by rating or territory, or restrict to reviews that already have a response." +
+      UNTRUSTED_NOTE,
     {
       app_id: z.string().describe("App Store Connect app ID"),
       rating: z.number().int().min(1).max(5).optional().describe("Filter by star rating (1-5)"),
@@ -125,6 +131,7 @@ export function registerAppTools(server: McpServer, client: AppStoreConnectClien
         .describe("Only reviews that have (true) or lack (false) a published developer response"),
       limit: z.number().int().min(1).max(200).optional().describe("Max reviews (default: 50)"),
     },
+    READ_ONLY,
     async ({ app_id, rating, territory, has_response, limit }) => {
       try {
         const params: QueryParams = {

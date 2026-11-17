@@ -4,11 +4,14 @@ import { registerListingTools } from "../tools/listing.js";
 
 type Handler = (args: any) => Promise<{ content: { text?: string }[]; isError?: boolean }>;
 
-function collect() {
+function collect(allowWrites = true) {
   const tools = new Map<string, Handler>();
   registerListingTools(
-    { tool: (n: string, _d: string, _s: unknown, h: Handler) => tools.set(n, h) } as any,
+    {
+      tool: (n: string, _d: string, _s: unknown, _a: unknown, h: Handler) => tools.set(n, h),
+    } as any,
     new AppStoreConnectClient(async () => "tok"),
+    allowWrites,
   );
   return tools;
 }
@@ -31,6 +34,20 @@ describe("listing tools", () => {
     vi.stubGlobal("fetch", mockFetch);
   });
   afterEach(() => vi.restoreAllMocks());
+
+  it("registers only read tools unless writes are allowed", () => {
+    expect([...collect(false).keys()]).toEqual(["get_app_info", "list_app_categories"]);
+    expect([...collect(true).keys()]).toEqual([
+      "get_app_info",
+      "list_app_categories",
+      "update_app",
+      "update_app_info",
+      "update_app_info_localization",
+      "update_age_rating_declaration",
+      "update_app_store_version",
+      "update_app_store_version_localization",
+    ]);
+  });
 
   it("get_app_info resolves localizations, categories and age rating", async () => {
     mockFetch.mockImplementation(async (url: string) => {

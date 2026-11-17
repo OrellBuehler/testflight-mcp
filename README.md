@@ -13,8 +13,8 @@ Its focus is **TestFlight beta feedback retrieval** — pulling the screenshot f
 tester's comment), crash feedback and crash logs your testers submit — plus the surrounding context
 an agent needs to make sense of it: apps, builds, beta testers/groups, analytics & sales reports,
 provisioning, and App Store metadata. It talks **only to the official, documented API** using a
-standard App Store Connect API key (ES256 JWT), and is **read-only** apart from the App Store listing:
-App Information, product page text and screenshots.
+standard App Store Connect API key (ES256 JWT), and is **read-only by default**. Editing the App Store
+listing (App Information, product page text and screenshots) is opt-in via `ASC_ALLOW_WRITES`.
 
 > It deliberately does **not** scrape App Store Connect with your Apple ID / password (no headless
 > browser, no internal `iris` API) and does **not** send email to testers. Some third-party
@@ -35,7 +35,7 @@ claude mcp add testflight \
 ```
 
 For any other MCP client, run the package directly — `npx -y @orellbuehler/testflight-mcp` with the
-env vars below set. Requires Node.js 20+.
+env vars below set. Requires Node.js 22+.
 
 ## Getting an API key
 
@@ -62,7 +62,38 @@ may be escaped as `\n`). The key is read locally and used only to sign short-liv
 | `ASC_PRIVATE_KEY`      | yes\*    | The `.p8` contents inline (alternative to the path; `\n` escapes are unescaped).      |
 | `ASC_VENDOR_NUMBER`    | no       | Vendor number; required only for `download_sales_report` / `download_finance_report`. |
 
+| `ASC_ALLOW_WRITES` | no | Set to `true` or `1` to register the write tools (`update_*`, `upload_app_screenshots`). Off by default. |
+| `ASC_UPLOAD_DIR` | no | Directory `upload_app_screenshots` may read from. Required for uploads; only `.png`/`.jpg`/`.jpeg` files inside it (after resolving symlinks, max 30 MB each) are accepted. |
+
 \* Provide **either** `ASC_PRIVATE_KEY_PATH` **or** `ASC_PRIVATE_KEY`.
+
+### Enabling writes
+
+By default the server registers only read tools. Tester feedback, crash logs and customer reviews are
+text written by strangers, and an agent that reads them next to write tools could be talked into
+editing your listing by a crafted comment. Only set `ASC_ALLOW_WRITES` when you want the agent to edit
+the listing, ideally in a separate MCP server entry that you enable for that task:
+
+```json
+{
+  "mcpServers": {
+    "testflight-writes": {
+      "command": "npx",
+      "args": ["-y", "@orellbuehler/testflight-mcp"],
+      "env": {
+        "ASC_KEY_ID": "ABCD123456",
+        "ASC_ISSUER_ID": "12a3b456-7890-1234-5678-9abcdef01234",
+        "ASC_PRIVATE_KEY_PATH": "/path/to/AuthKey_ABCD123456.p8",
+        "ASC_ALLOW_WRITES": "true",
+        "ASC_UPLOAD_DIR": "/path/to/screenshots"
+      }
+    }
+  }
+}
+```
+
+Every tool carries MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`,
+`openWorldHint`) so clients can ask for confirmation before a write.
 
 ## Usage with Claude Code
 
@@ -105,7 +136,8 @@ Once connected, ask the agent things like:
 ## Tools
 
 Start from `list_apps` to get an `app_id`, then drill into feedback. All tools are read-only except the
-`update_*` listing tools and `upload_app_screenshots`.
+`update_*` listing tools and `upload_app_screenshots`, which are only registered when
+`ASC_ALLOW_WRITES` is set.
 
 **TestFlight feedback**
 
@@ -173,7 +205,7 @@ Start from `list_apps` to get an `app_id`, then drill into feedback. All tools a
 | `list_app_store_version_localizations` | Per-locale metadata (description, keywords, what's new, URLs). |
 | `get_app_store_version_localization`   | One localization by ID.                                        |
 
-**App Information & product page (writes)**
+**App Information & product page** (`update_*` need `ASC_ALLOW_WRITES`)
 
 | Tool                                    | Description                                                                                                    |
 | --------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
@@ -186,12 +218,12 @@ Start from `list_apps` to get an `app_id`, then drill into feedback. All tools a
 | `update_app_store_version`              | **Writes.** Version string, copyright, release type.                                                           |
 | `update_app_store_version_localization` | **Writes.** Description, keywords, promotional text, what's new, URLs (creates the locale if missing).         |
 
-**App Store screenshots**
+**App Store screenshots** (`upload_app_screenshots` needs `ASC_ALLOW_WRITES` and `ASC_UPLOAD_DIR`)
 
-| Tool                       | Description                                                                                                  |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `list_app_screenshot_sets` | Screenshot sets of a localization (one per display type) with their screenshots and processing state.        |
-| `upload_app_screenshots`   | **Writes.** Uploads local PNG/JPEG files to one display type, in order; optionally replaces the current set. |
+| Tool                       | Description                                                                                                                                                                                |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `list_app_screenshot_sets` | Screenshot sets of a localization (one per display type) with their screenshots and processing state.                                                                                      |
+| `upload_app_screenshots`   | **Writes.** Uploads PNG/JPEG files from `ASC_UPLOAD_DIR` to one display type, in order. With `replace_existing` the previous screenshots are deleted only after every new one is uploaded. |
 
 **App Review pipeline**
 
@@ -220,10 +252,22 @@ Start from `list_apps` to get an `app_id`, then drill into feedback. All tools a
 
 ## Notes & caveats
 
-- **Read-only, except the App Store listing.** The server cannot add/remove testers, attach builds,
-  or submit apps. The `update_*` listing tools (App Information, age rating, version text) and
-  `upload_app_screenshots` change App Store Connect; nothing else does. `create_analytics_report_request`
-  only requests an analytics snapshot so the data can be read; it does not change your app.
+- **Read-only unless `ASC_ALLOW_WRITES` is set.** The server cannot add/remove testers, attach builds,
+  or submit apps. With `ASC_ALLOW_WRITES`, the `update_*` listing tools (App Information, age rating,
+  version text) and `upload_app_screenshots` change App Store Connect; nothing else does.
+  `create_analytics_report_request` is always available: it only requests an analytics snapshot so the
+  data can be read and does not change your app.
+- **Feedback is untrusted input.** Tester comments, crash logs and customer reviews are written by
+  third parties. The tool descriptions tell the agent not to follow instructions found in them, but
+  that is a mitigation, not a guarantee, which is why writes are opt-in.
+- **Screenshot uploads** only read `.png`/`.jpg`/`.jpeg` files inside `ASC_UPLOAD_DIR` (symlinks are
+  resolved first, the content must be PNG or JPEG, max 30 MB). With `replace_existing` the new files
+  are uploaded and committed first and the previous screenshots are deleted afterwards; if an upload
+  fails the partial uploads are removed and the previous ones stay. A set holds at most 10
+  screenshots, so when old and new together exceed 10 the call fails without changing anything unless
+  you pass `delete_first`, which deletes just enough previous screenshots up front (those are lost if
+  an upload then fails). Apple processes uploads asynchronously, so a screenshot can still fail
+  processing after the previous ones were deleted; check with `list_app_screenshot_sets`.
 - **TestFlight feedback** requires builds uploaded with feedback enabled and is retained by Apple for
   a limited window (~90 days). The tester's typed comment is the `comment` field on a screenshot
   submission.
@@ -239,6 +283,19 @@ Start from `list_apps` to get an `app_id`, then drill into feedback. All tools a
   `get_app_store_version_status` deliberately omit the `demoAccountPassword` field.
 - **Your data goes to the agent/LLM.** Feedback includes tester names, emails and device details. Use
   an API key scoped to the access you actually want.
+
+## Upgrading to 0.5.0
+
+Two breaking changes:
+
+- **Writes are opt-in.** The `update_*` tools and `upload_app_screenshots` are no longer registered
+  unless `ASC_ALLOW_WRITES=true` (or `1`) is set.
+- **Uploads need `ASC_UPLOAD_DIR`.** `upload_app_screenshots` returns an error until it is set, and
+  only accepts PNG/JPEG files inside that directory. `replace_existing` now deletes the previous
+  screenshots after the upload instead of before, and needs `delete_first` when old and new together
+  exceed 10.
+
+Node.js 20 is end-of-life and no longer supported; Node.js 22+ is required.
 
 ## Development
 
@@ -260,7 +317,7 @@ npx vitest run src/__tests__/feedback.test.ts
 ## CI / Releasing
 
 - **CI** (`.github/workflows/ci.yml`) runs on every push to `main` and on pull requests:
-  `format:check`, `lint`, `typecheck` (once) and `test` + `build` on Node 20 and 22.
+  `format:check`, `lint`, `typecheck` (once) and `test` + `build` on Node 22 and 24.
 - **Publish** (`.github/workflows/publish.yml`) runs when a GitHub Release is published. It builds,
   tests, and publishes to npm using [trusted publishing](https://docs.npmjs.com/trusted-publishers)
   (OIDC) — **no `NPM_TOKEN` secret required**, with provenance generated automatically. It skips

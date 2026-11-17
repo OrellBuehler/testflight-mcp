@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AppStoreConnectClient, QueryParams } from "../asc/client.js";
 import { ok, err, flattenResource } from "../asc/format.js";
+import { READ_ONLY } from "./shared.js";
 
 const XCODE_METRICS_HEADERS = {
   Accept: "application/vnd.apple.xcode-metrics+json, application/json",
@@ -37,6 +38,7 @@ export function registerDiagnosticsTools(server: McpServer, client: AppStoreConn
         .describe("Filter by device type, e.g. 'all_iphones' or 'all_ipads'"),
       platform: z.string().optional().describe("Filter by platform (only iOS is supported)"),
     },
+    READ_ONLY,
     async ({ app_id, build_id, metric_type, device_type, platform }) => {
       try {
         if (!app_id && !build_id) return err("Pass either app_id or build_id.");
@@ -64,6 +66,7 @@ export function registerDiagnosticsTools(server: McpServer, client: AppStoreConn
       ),
       limit: z.number().int().min(1).max(200).optional().describe("Max signatures (default: 25)"),
     },
+    READ_ONLY,
     async ({ build_id, diagnostic_type, limit }) => {
       try {
         const params: QueryParams = {
@@ -95,6 +98,7 @@ export function registerDiagnosticsTools(server: McpServer, client: AppStoreConn
         .describe("Include the full call stack trees (default: false)"),
       limit: z.number().int().min(1).max(200).optional().describe("Max logs (default: 5)"),
     },
+    READ_ONLY,
     async ({ signature_id, include_call_stacks, limit }) => {
       try {
         const body = (await client.getJson(

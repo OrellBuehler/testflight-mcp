@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A STDIO MCP server that exposes the **official App Store Connect API** as read-only tools (plus App Store listing edits) for AI
+A STDIO MCP server that exposes the **official App Store Connect API** as read-only tools (plus opt-in App Store listing edits) for AI
 agents, centered on **TestFlight beta feedback retrieval** (screenshot feedback, crash feedback,
 crash logs) and surrounding context (apps, builds, testers/groups, analytics & sales reports,
 provisioning, App Store metadata). Published to npm as `@orellbuehler/testflight-mcp` and run via
@@ -31,17 +31,18 @@ npx vitest run -t "get_crash_log"
 ```
 
 CI (`.github/workflows/ci.yml`) runs `format:check`, `lint`, `typecheck`, and `test` + `build` on
-Node 20 and 22 — all must pass. Run them locally before committing.
+Node 22 and 24 — all must pass. Run them locally before committing.
 
 ## Architecture
 
 Request flow: `index.ts` reads config, builds the server via `server.ts:createServer(client,
-vendorNumber)`, and connects it over stdio. Each tool calls the App Store Connect REST `client`.
+vendorNumber, allowWrites, uploadDir)`, and connects it over stdio. Each tool calls the App Store Connect REST `client`.
 
 - **`src/index.ts`** — entry point. Stdio transport only (single-account).
 - **`src/config.ts`** — reads env at import time and **exits the process** if `ASC_KEY_ID`,
   `ASC_ISSUER_ID` or a private key (`ASC_PRIVATE_KEY` / `ASC_PRIVATE_KEY_PATH`) is missing. Exports
-  `config` and `client`.
+  `config` (including `allowWrites` from `ASC_ALLOW_WRITES` and `uploadDir` from `ASC_UPLOAD_DIR`)
+  and `client`.
 - **`src/asc/jwt.ts`** — `createTokenProvider(auth)`: returns a cached ES256 JWT signer (via `jose`)
   for App Store Connect. Tokens are valid 20 min (Apple's max) and cached with a 60 s buffer. The
   `.p8` key is loaded lazily on first use (inline or from a file path).
@@ -60,15 +61,31 @@ vendorNumber)`, and connects it over stdio. Each tool calls the App Store Connec
   metrics), `testers`, `analytics` (also takes the default vendor number), `provisioning`,
   `metadata` (App Store versions + review pipeline), `diagnostics` (perf/power metrics, diagnostic
   signatures and logs), `ci` (Xcode Cloud), `screenshots` (App Store screenshot sets + upload), `listing` (App Information, age rating,
-  version text — writes).
+  version text — writes). `listing` and `screenshots` take `allowWrites` as the third argument;
+  `screenshots` also takes `uploadDir`.
+- **`src/tools/shared.ts`** — the tool annotation presets (`READ_ONLY`, `CREATE`, `OVERWRITE`,
+  `DESTRUCTIVE`) and `UNTRUSTED_NOTE`. Reuse these instead of redeclaring them.
 
 ## Conventions
 
 - **ESM with Node16 module resolution: all relative imports must end in `.js`** (e.g.
   `import { ok } from "../asc/format.js"`), even though the source is `.ts`.
-- **Tool handler shape:** `server.tool(name, description, zodShape, async (args) => { try { return
-ok(...); } catch (e) { return err(e); } })`. The third argument is a raw Zod shape object. Match this
-  try/catch-`ok`/`err` style exactly.
+- **Tool handler shape:** `server.tool(name, description, zodShape, annotations, async (args) => {
+try { return ok(...); } catch (e) { return err(e); } })`. The third argument is a raw Zod shape
+  object, the fourth one of the annotation presets from `tools/shared.ts` (`READ_ONLY` for anything
+  that only reads). Match this try/catch-`ok`/`err` style exactly. `server.test.ts` fails if a tool
+  has no annotations.
+- **Write tools are opt-in.** `update_*` and `upload_app_screenshots` are only registered when
+  `allowWrites` is true (`ASC_ALLOW_WRITES`). Implemented as an early `if (!allowWrites) return;` in
+  the register function, with the write tools after it, so the gating is one obvious line rather than
+  a per-tool condition. Any new write goes below that line.
+- **Stranger-written text is untrusted.** Tools that return tester comments, crash logs or customer
+  reviews append `UNTRUSTED_NOTE` to their description. Do the same for any new tool that returns
+  text written by third parties.
+- **Uploads only read from `ASC_UPLOAD_DIR`.** `upload_app_screenshots` resolves real paths, rejects
+  anything outside that directory, non-PNG/JPEG files and files over 30 MB, and validates every file
+  before the first API call. With `replace_existing` it uploads and commits the new screenshots
+  before deleting the previous ones; keep that order.
 - **Pass the API through, don't fabricate fields.** Tools resolve `included` and flatten
   `attributes`, but surface whatever Apple returns rather than hand-mapping into a fixed schema — so
   the server stays correct if Apple adds/renames attributes. (An earlier third-party server invented
@@ -98,3 +115,10 @@ and assert the exact request URL (path + `searchParams`) and the output shaping.
 covers pagination, gzip and error handling; `jwt.test.ts` signs with a generated P-256 key and
 asserts header/claims/caching; `config.ts` reads env at import time and exits if it's missing, so
 `config.test.ts` `vi.stubEnv(...)` then dynamically `import()`s it.
+
+Gated modules (`listing`, `screenshots`) take `allowWrites` in the test `collect()` helper and assert
+the **exact list of registered tool names** when it is false, so a new write tool added above the
+gate fails the test. `server.test.ts` connects a real MCP client over an in-memory transport and
+asserts the tool list with and without writes, that every tool has annotations, and that the tools
+returning third-party text carry the untrusted note. `screenshots.test.ts` works in a real temp
+directory (including real symlinks) to cover traversal and symlink escapes.
