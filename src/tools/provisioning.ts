@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AppStoreConnectClient, QueryParams } from "../asc/client.js";
 import { ok, err, flattenResource, shapeResource } from "../asc/format.js";
+import { READ_ONLY } from "./shared.js";
 
 export function registerProvisioningTools(server: McpServer, client: AppStoreConnectClient) {
   server.tool(
@@ -12,6 +13,7 @@ export function registerProvisioningTools(server: McpServer, client: AppStoreCon
       status: z.enum(["ENABLED", "DISABLED"]).optional().describe("Filter by device status"),
       limit: z.number().int().min(1).max(200).optional().describe("Max devices (default: 100)"),
     },
+    READ_ONLY,
     async ({ platform, status, limit }) => {
       try {
         const params: QueryParams = {
@@ -44,6 +46,7 @@ export function registerProvisioningTools(server: McpServer, client: AppStoreCon
         .optional()
         .describe("Max certificates (default: 100)"),
     },
+    READ_ONLY,
     async ({ certificate_type, limit }) => {
       try {
         const params: QueryParams = {
@@ -67,6 +70,7 @@ export function registerProvisioningTools(server: McpServer, client: AppStoreCon
       profile_state: z.enum(["ACTIVE", "INVALID"]).optional().describe("Filter by profile state"),
       limit: z.number().int().min(1).max(200).optional().describe("Max profiles (default: 100)"),
     },
+    READ_ONLY,
     async ({ profile_state, limit }) => {
       try {
         const params: QueryParams = {
@@ -102,6 +106,7 @@ export function registerProvisioningTools(server: McpServer, client: AppStoreCon
         .describe("Filter by bundle platform"),
       limit: z.number().int().min(1).max(200).optional().describe("Max bundle IDs (default: 100)"),
     },
+    READ_ONLY,
     async ({ identifier, platform, limit }) => {
       try {
         const params: QueryParams = {

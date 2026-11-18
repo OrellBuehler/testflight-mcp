@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AppStoreConnectClient, QueryParams } from "../asc/client.js";
 import { ok, err, flattenResource } from "../asc/format.js";
+import { READ_ONLY } from "./shared.js";
 
 const GROUP_FIELDS =
   "name,isInternalGroup,publicLinkEnabled,publicLinkLimit,publicLink,feedbackEnabled,createdDate";
@@ -15,6 +16,7 @@ export function registerTesterTools(server: McpServer, client: AppStoreConnectCl
       app_id: z.string().describe("App Store Connect app ID"),
       limit: z.number().int().min(1).max(200).optional().describe("Max groups (default: 100)"),
     },
+    READ_ONLY,
     async ({ app_id, limit }) => {
       try {
         const params: QueryParams = {
@@ -39,6 +41,7 @@ export function registerTesterTools(server: McpServer, client: AppStoreConnectCl
       email: z.string().optional().describe("Filter by exact tester email"),
       limit: z.number().int().min(1).max(200).optional().describe("Max testers (default: 100)"),
     },
+    READ_ONLY,
     async ({ app_id, group_id, email, limit }) => {
       try {
         const params: QueryParams = {
@@ -64,6 +67,7 @@ export function registerTesterTools(server: McpServer, client: AppStoreConnectCl
       group_id: z.string().describe("Beta group ID"),
       limit: z.number().int().min(1).max(200).optional().describe("Max testers (default: 100)"),
     },
+    READ_ONLY,
     async ({ group_id, limit }) => {
       try {
         const params: QueryParams = {

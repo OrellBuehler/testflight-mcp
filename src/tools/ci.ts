@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AppStoreConnectClient, QueryParams } from "../asc/client.js";
 import { ok, err, shapeResource, flattenResource } from "../asc/format.js";
+import { READ_ONLY } from "./shared.js";
 
 const PRODUCT_FIELDS = "name,createdDate,productType";
 const BUILD_RUN_FIELDS =
@@ -21,6 +22,7 @@ export function registerCiTools(server: McpServer, client: AppStoreConnectClient
       product_type: z.enum(["APP", "FRAMEWORK"]).optional().describe("Filter by product type"),
       limit: z.number().int().min(1).max(200).optional().describe("Max products (default: 100)"),
     },
+    READ_ONLY,
     async ({ app_id, product_type, limit }) => {
       try {
         const params: QueryParams = {
@@ -48,6 +50,7 @@ export function registerCiTools(server: McpServer, client: AppStoreConnectClient
       workflow_id: z.string().optional().describe("Xcode Cloud workflow ID"),
       limit: z.number().int().min(1).max(200).optional().describe("Max build runs (default: 25)"),
     },
+    READ_ONLY,
     async ({ product_id, workflow_id, limit }) => {
       try {
         if (!product_id && !workflow_id) return err("Pass either product_id or workflow_id.");
@@ -82,6 +85,7 @@ export function registerCiTools(server: McpServer, client: AppStoreConnectClient
       build_run_id: z.string().describe("Xcode Cloud build run ID (from list_ci_build_runs)"),
       limit: z.number().int().min(1).max(200).optional().describe("Max actions (default: 50)"),
     },
+    READ_ONLY,
     async ({ build_run_id, limit }) => {
       try {
         const { data } = await client.getAll(
@@ -104,6 +108,7 @@ export function registerCiTools(server: McpServer, client: AppStoreConnectClient
         .describe("Xcode Cloud build action ID (from list_ci_build_actions)"),
       limit: z.number().int().min(1).max(200).optional().describe("Max issues (default: 50)"),
     },
+    READ_ONLY,
     async ({ build_action_id, limit }) => {
       try {
         const { data } = await client.getAll(
@@ -126,6 +131,7 @@ export function registerCiTools(server: McpServer, client: AppStoreConnectClient
         .describe("Xcode Cloud build action ID (from list_ci_build_actions)"),
       limit: z.number().int().min(1).max(200).optional().describe("Max artifacts (default: 50)"),
     },
+    READ_ONLY,
     async ({ build_action_id, limit }) => {
       try {
         const { data } = await client.getAll(

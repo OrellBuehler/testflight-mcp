@@ -8,7 +8,9 @@ type Handler = (args: any) => Promise<{ content: { text?: string }[]; isError?: 
 function collect(vendor?: string) {
   const tools = new Map<string, Handler>();
   registerAnalyticsTools(
-    { tool: (n: string, _d: string, _s: unknown, h: Handler) => tools.set(n, h) } as any,
+    {
+      tool: (n: string, _d: string, _s: unknown, _a: unknown, h: Handler) => tools.set(n, h),
+    } as any,
     new AppStoreConnectClient(async () => "tok"),
     vendor,
   );

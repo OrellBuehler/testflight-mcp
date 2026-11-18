@@ -9,7 +9,9 @@ type Handler = (
 function collect() {
   const tools = new Map<string, Handler>();
   registerFeedbackTools(
-    { tool: (n: string, _d: string, _s: unknown, h: Handler) => tools.set(n, h) } as any,
+    {
+      tool: (n: string, _d: string, _s: unknown, _a: unknown, h: Handler) => tools.set(n, h),
+    } as any,
     new AppStoreConnectClient(async () => "tok"),
   );
   return tools;

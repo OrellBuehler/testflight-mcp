@@ -30,6 +30,38 @@ describe("config", () => {
     vi.stubEnv("ASC_PRIVATE_KEY_PATH", "/tmp/AuthKey.p8");
     const { config } = await import("../config.js");
     expect(config.vendorNumber).toBeUndefined();
+    expect(config.allowWrites).toBe(false);
+    expect(config.uploadDir).toBeUndefined();
+  });
+
+  it("enables writes only for ASC_ALLOW_WRITES=true or 1", async () => {
+    for (const [value, expected] of [
+      ["true", true],
+      ["TRUE", true],
+      ["1", true],
+      [" 1 ", true],
+      ["", false],
+      ["0", false],
+      ["false", false],
+      ["yes", false],
+    ] as const) {
+      vi.resetModules();
+      vi.stubEnv("ASC_KEY_ID", "KEY123");
+      vi.stubEnv("ASC_ISSUER_ID", "ISSUER-1");
+      vi.stubEnv("ASC_PRIVATE_KEY_PATH", "/tmp/AuthKey.p8");
+      vi.stubEnv("ASC_ALLOW_WRITES", value);
+      const { config } = await import("../config.js");
+      expect(config.allowWrites).toBe(expected);
+    }
+  });
+
+  it("reads ASC_UPLOAD_DIR", async () => {
+    vi.stubEnv("ASC_KEY_ID", "KEY123");
+    vi.stubEnv("ASC_ISSUER_ID", "ISSUER-1");
+    vi.stubEnv("ASC_PRIVATE_KEY_PATH", "/tmp/AuthKey.p8");
+    vi.stubEnv("ASC_UPLOAD_DIR", " /srv/screenshots ");
+    const { config } = await import("../config.js");
+    expect(config.uploadDir).toBe("/srv/screenshots");
   });
 
   it("exits when required env vars are missing", async () => {

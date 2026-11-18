@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AppStoreConnectClient, JsonApiResource, QueryParams } from "../asc/client.js";
 import { ok, err, flattenResource, shapeResource, manyRefs, findIncluded } from "../asc/format.js";
+import { READ_ONLY } from "./shared.js";
 
 const VERSION_FIELDS =
   "versionString,platform,appStoreState,appVersionState,releaseType,copyright,earliestReleaseDate,downloadable,createdDate";
@@ -54,6 +55,7 @@ export function registerMetadataTools(server: McpServer, client: AppStoreConnect
         .describe("Filter by App Store state, e.g. 'READY_FOR_SALE'"),
       limit: z.number().int().min(1).max(200).optional().describe("Max versions (default: 100)"),
     },
+    READ_ONLY,
     async ({ app_id, platform, version, app_store_state, limit }) => {
       try {
         const params: QueryParams = {
@@ -87,6 +89,7 @@ export function registerMetadataTools(server: McpServer, client: AppStoreConnect
         .optional()
         .describe("Max localizations (default: 100)"),
     },
+    READ_ONLY,
     async ({ version_id, limit }) => {
       try {
         const { data } = await client.getAll(
@@ -123,6 +126,7 @@ export function registerMetadataTools(server: McpServer, client: AppStoreConnect
         .describe("Filter by submission state"),
       limit: z.number().int().min(1).max(200).optional().describe("Max submissions (default: 25)"),
     },
+    READ_ONLY,
     async ({ app_id, platform, state, limit }) => {
       try {
         const params: QueryParams = {
@@ -157,6 +161,7 @@ export function registerMetadataTools(server: McpServer, client: AppStoreConnect
     "get_app_store_version_status",
     "Get the full release status of an App Store version in one call: the version itself (appVersionState / appStoreState), the build attached to it, whether it has been submitted for review, the phased release state and day number, and the App Review contact and notes. Sub-resources that do not exist yet (no build attached, not submitted, no phased release) come back as null.",
     { version_id: z.string().describe("App Store version ID (from list_app_store_versions)") },
+    READ_ONLY,
     async ({ version_id }) => {
       try {
         const id = encodeURIComponent(version_id);
@@ -186,6 +191,7 @@ export function registerMetadataTools(server: McpServer, client: AppStoreConnect
     "get_app_store_version_localization",
     "Get a single App Store version localization by ID (description, keywords, what's new, promotional text, URLs).",
     { localization_id: z.string().describe("App Store version localization ID") },
+    READ_ONLY,
     async ({ localization_id }) => {
       try {
         const res = await client.get(

@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AppStoreConnectClient, JsonApiResource } from "../asc/client.js";
 import { ok, err, flattenResource, shapeResource, manyRefs, findIncluded } from "../asc/format.js";
+import { OVERWRITE, READ_ONLY } from "./shared.js";
 
 const APP_FIELDS = "name,bundleId,sku,primaryLocale,contentRightsDeclaration";
 const APP_INFO_RELATIONSHIPS =
@@ -20,11 +21,16 @@ function categoryRef(id: string | null | undefined) {
   return { data: id === null ? null : { type: "appCategories", id } };
 }
 
-export function registerListingTools(server: McpServer, client: AppStoreConnectClient) {
+export function registerListingTools(
+  server: McpServer,
+  client: AppStoreConnectClient,
+  allowWrites = false,
+) {
   server.tool(
     "get_app_info",
-    "Get an app's App Information page: the app itself (primary locale, content rights declaration) and each appInfo (one per live/editable state) with its per-locale name, subtitle and privacy policy URL, primary/secondary categories and the age rating declaration. Use the returned IDs with the update_* tools.",
+    "Get an app's App Information page: the app itself (primary locale, content rights declaration) and each appInfo (one per live/editable state) with its per-locale name, subtitle and privacy policy URL, primary/secondary categories and the age rating declaration. Use the returned IDs with the update_* tools (registered only when ASC_ALLOW_WRITES is set).",
     { app_id: z.string().describe("App Store Connect app ID") },
+    READ_ONLY,
     async ({ app_id }) => {
       try {
         const id = encodeURIComponent(app_id);
@@ -71,6 +77,7 @@ export function registerListingTools(server: McpServer, client: AppStoreConnectC
         .optional()
         .describe("Filter by platform (default: IOS)"),
     },
+    READ_ONLY,
     async ({ platform }) => {
       try {
         const { data } = await client.getAll("/appCategories", {
@@ -91,6 +98,8 @@ export function registerListingTools(server: McpServer, client: AppStoreConnectC
     },
   );
 
+  if (!allowWrites) return;
+
   server.tool(
     "update_app",
     "Writes. Update app-level App Information: the content rights declaration and/or the primary locale.",
@@ -102,6 +111,7 @@ export function registerListingTools(server: McpServer, client: AppStoreConnectC
         .describe("Whether the app contains, shows or accesses third-party content"),
       primary_locale: z.string().optional().describe("Primary locale, e.g. 'en-US'"),
     },
+    OVERWRITE,
     async ({ app_id, content_rights_declaration, primary_locale }) => {
       try {
         const res = await client.patch(`/apps/${encodeURIComponent(app_id)}`, {
@@ -133,6 +143,7 @@ export function registerListingTools(server: McpServer, client: AppStoreConnectC
       secondary_subcategory_one: z.string().nullable().optional(),
       secondary_subcategory_two: z.string().nullable().optional(),
     },
+    OVERWRITE,
     async (args) => {
       try {
         const res = await client.patch(`/appInfos/${encodeURIComponent(args.app_info_id)}`, {
@@ -167,6 +178,7 @@ export function registerListingTools(server: McpServer, client: AppStoreConnectC
       privacy_policy_url: z.string().optional(),
       privacy_choices_url: z.string().optional(),
     },
+    OVERWRITE,
     async ({ app_info_id, locale, name, subtitle, privacy_policy_url, privacy_choices_url }) => {
       try {
         const attributes = defined({
@@ -205,6 +217,7 @@ export function registerListingTools(server: McpServer, client: AppStoreConnectC
       declaration_id: z.string().describe("ageRatingDeclaration ID (from get_app_info)"),
       attributes: z.record(z.string(), z.unknown()).describe("Questionnaire answers to set"),
     },
+    OVERWRITE,
     async ({ declaration_id, attributes }) => {
       try {
         const res = await client.patch(
@@ -231,6 +244,7 @@ export function registerListingTools(server: McpServer, client: AppStoreConnectC
         .optional()
         .describe("ISO 8601 date-time, required for SCHEDULED"),
     },
+    OVERWRITE,
     async ({ version_id, version_string, copyright, release_type, earliest_release_date }) => {
       try {
         const res = await client.patch(`/appStoreVersions/${encodeURIComponent(version_id)}`, {
@@ -265,6 +279,7 @@ export function registerListingTools(server: McpServer, client: AppStoreConnectC
       support_url: z.string().optional(),
       marketing_url: z.string().optional(),
     },
+    OVERWRITE,
     async (args) => {
       try {
         const attributes = defined({

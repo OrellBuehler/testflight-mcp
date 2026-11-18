@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AppStoreConnectClient, QueryParams } from "../asc/client.js";
 import { ok, err, flattenResource } from "../asc/format.js";
+import { READ_ONLY } from "./shared.js";
 
 const BUILD_BETA_DETAIL_FIELDS = "autoNotifyEnabled,internalBuildState,externalBuildState";
 const BETA_REVIEW_SUBMISSION_FIELDS = "betaReviewState,submittedDate";
@@ -22,6 +23,7 @@ export function registerTestFlightTools(server: McpServer, client: AppStoreConne
     "get_build_status",
     "Get the TestFlight distribution status of a build: internal/external build state and auto-notify (buildBetaDetail), the beta app review submission with its betaReviewState (WAITING_FOR_REVIEW, IN_REVIEW, REJECTED, APPROVED) and submitted date, and the 'What to Test' notes per locale. Use this to find out why a build is not yet available to external testers.",
     { build_id: z.string().describe("Build ID (from list_builds)") },
+    READ_ONLY,
     async ({ build_id }) => {
       try {
         const [details, submissions, localizations] = await Promise.all([
@@ -65,6 +67,7 @@ export function registerTestFlightTools(server: McpServer, client: AppStoreConne
         .optional()
         .describe("Max localizations (default: 100)"),
     },
+    READ_ONLY,
     async ({ app_id, locale, limit }) => {
       try {
         const params: QueryParams = {
@@ -85,6 +88,7 @@ export function registerTestFlightTools(server: McpServer, client: AppStoreConne
     "get_beta_app_review_detail",
     "Get the beta app review details an app submits with builds for external TestFlight review: review contact, whether a demo account is required, the demo account name and review notes. The demo account password is deliberately not requested.",
     { app_id: z.string().describe("App Store Connect app ID") },
+    READ_ONLY,
     async ({ app_id }) => {
       try {
         const { data } = await client.getAll("/betaAppReviewDetails", {
@@ -105,6 +109,7 @@ export function registerTestFlightTools(server: McpServer, client: AppStoreConne
       build_id: z.string().describe("Build ID (from list_builds)"),
       limit: z.number().int().min(1).max(200).optional().describe("Max data points"),
     },
+    READ_ONLY,
     async ({ build_id, limit }) => {
       try {
         const params: QueryParams = {};
@@ -130,6 +135,7 @@ export function registerTestFlightTools(server: McpServer, client: AppStoreConne
       period: PERIOD.optional().describe("Reporting period (default: P30D)"),
       limit: z.number().int().min(1).max(200).optional().describe("Max data points"),
     },
+    READ_ONLY,
     async ({ app_id, group_id, tester_id, period, limit }) => {
       try {
         if (!app_id && !group_id) return err("Pass either app_id or group_id.");

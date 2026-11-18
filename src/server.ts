@@ -15,7 +15,12 @@ import { registerListingTools } from "./tools/listing.js";
 
 const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
 
-export function createServer(client: AppStoreConnectClient, vendorNumber?: string): McpServer {
+export function createServer(
+  client: AppStoreConnectClient,
+  vendorNumber?: string,
+  allowWrites = false,
+  uploadDir?: string,
+): McpServer {
   const server = new McpServer({ name: "testflight-mcp", version });
   registerFeedbackTools(server, client);
   registerAppTools(server, client);
@@ -26,7 +31,7 @@ export function createServer(client: AppStoreConnectClient, vendorNumber?: strin
   registerMetadataTools(server, client);
   registerDiagnosticsTools(server, client);
   registerCiTools(server, client);
-  registerScreenshotTools(server, client);
-  registerListingTools(server, client);
+  registerScreenshotTools(server, client, allowWrites, uploadDir);
+  registerListingTools(server, client, allowWrites);
   return server;
 }
