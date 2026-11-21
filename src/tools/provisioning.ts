@@ -348,7 +348,6 @@ export function registerProvisioningTools(
         const [capabilities, profiles] = await Promise.all([
           client.getAll(`/bundleIds/${id}/bundleIdCapabilities`, {
             "fields[bundleIdCapabilities]": "capabilityType,settings",
-            limit: 200,
           }),
           client.getAll(`/bundleIds/${id}/profiles`, {
             "fields[profiles]": PROFILE_FIELDS,
