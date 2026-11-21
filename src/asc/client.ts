@@ -130,8 +130,15 @@ export class AppStoreConnectClient {
     return res.json() as Promise<JsonApiResponse>;
   }
 
-  async delete(path: string): Promise<void> {
-    await this.request(this.buildUrl(path), { method: "DELETE" });
+  async postNoContent(path: string, body: unknown): Promise<void> {
+    await this.request(this.buildUrl(path), { method: "POST", body: JSON.stringify(body) });
+  }
+
+  async delete(path: string, body?: unknown): Promise<void> {
+    await this.request(this.buildUrl(path), {
+      method: "DELETE",
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
   }
 
   async uploadPart(
