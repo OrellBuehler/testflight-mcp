@@ -46,6 +46,7 @@ describe("profile decoding", () => {
       commonName: "Test Distribution: Example (TEAM000000)",
     });
     expect(decoded.developerCertificates[0].sha1).toMatch(/^[0-9A-F]{40}$/);
+    expect(decoded.developerCertificates[0].sha256).toMatch(/^[0-9A-F]{64}$/);
   });
 
   it("infers the profile type from devices and get-task-allow", () => {
@@ -69,7 +70,7 @@ describe("profile decoding", () => {
   it("keeps a fingerprint for certificates it cannot parse", () => {
     const decoded = decodeProfile(buildProfile({ certificates: ["AAECAw=="] }));
     expect(decoded.developerCertificates).toEqual([
-      { sha1: "A02A05B025B928C039CF1AE7E8EE04E7C190C0DB" },
+      { sha256: "054EDEC1D0211F624FED0CBCA9D4F9400B0E491C43742AF2C5B0ABEBF0C990D8" },
     ]);
   });
 });

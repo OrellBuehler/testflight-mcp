@@ -121,17 +121,18 @@ function plain(value: PlistValue): unknown {
 }
 
 function certificateInfo(der: Buffer) {
-  const sha1 = createHash("sha1").update(der).digest("hex").toUpperCase();
+  const sha256 = createHash("sha256").update(der).digest("hex").toUpperCase();
   try {
     const cert = new X509Certificate(der);
     return {
-      sha1,
+      sha1: cert.fingerprint.replaceAll(":", ""),
+      sha256,
       serialNumber: cert.serialNumber,
       commonName: /CN=([^\n]+)/.exec(cert.subject)?.[1],
       validTo: new Date(cert.validTo).toISOString(),
     };
   } catch {
-    return { sha1 };
+    return { sha256 };
   }
 }
 
