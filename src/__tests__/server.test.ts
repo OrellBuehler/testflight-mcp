@@ -29,6 +29,9 @@ const MANAGEMENT_WRITES = {
     "create_app_store_version",
     "create_review_submission",
     "add_review_submission_item",
+    "create_phased_release",
+    "upload_build",
+    "submit_for_notarization",
   ],
   overwrite: [
     "update_bundle_id",
@@ -38,6 +41,8 @@ const MANAGEMENT_WRITES = {
     "set_build_export_compliance",
     "set_build_whats_new",
     "set_app_store_version_build",
+    "update_beta_group",
+    "reply_to_customer_review",
   ],
   destructive: [
     "delete_bundle_id",
@@ -48,10 +53,25 @@ const MANAGEMENT_WRITES = {
     "remove_builds_from_beta_group",
     "submit_review_submission",
     "cancel_review_submission",
+    "update_phased_release",
+    "delete_phased_release",
+    "release_app_store_version",
+    "expire_build",
+    "remove_beta_tester",
+    "delete_customer_review_response",
   ],
 };
 const MANAGEMENT_TOOLS = Object.values(MANAGEMENT_WRITES).flat();
-const NEW_READ_TOOLS = ["get_bundle_id", "get_certificate", "get_profile"];
+const NEW_READ_TOOLS = [
+  "get_bundle_id",
+  "get_certificate",
+  "get_profile",
+  "list_build_uploads",
+  "get_build_upload",
+  "list_notarization_submissions",
+  "get_notarization_submission",
+  "get_notarization_log",
+];
 
 const UNTRUSTED_TOOLS = [
   "list_screenshot_feedback",
@@ -75,7 +95,7 @@ async function listTools(allowWrites?: boolean) {
 describe("server", () => {
   it("registers no write tools by default", async () => {
     const names = (await listTools()).map((t) => t.name);
-    expect(names).toHaveLength(47);
+    expect(names).toHaveLength(52);
     expect(new Set(names).size).toBe(names.length);
     expect(names.filter((n) => WRITE_TOOLS.includes(n) || MANAGEMENT_TOOLS.includes(n))).toEqual(
       [],
@@ -89,7 +109,7 @@ describe("server", () => {
 
   it("registers the write tools when writes are allowed", async () => {
     const names = (await listTools(true)).map((t) => t.name);
-    expect(names).toHaveLength(82);
+    expect(names).toHaveLength(98);
     expect(new Set(names).size).toBe(names.length);
     expect(names.filter((n) => WRITE_TOOLS.includes(n)).sort()).toEqual([...WRITE_TOOLS].sort());
     expect(names.filter((n) => MANAGEMENT_TOOLS.includes(n)).sort()).toEqual(

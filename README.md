@@ -16,8 +16,9 @@ provisioning, and App Store metadata. It talks **only to the official, documente
 standard App Store Connect API key (ES256 JWT), and is **read-only by default**. Everything that
 changes your account is opt-in via `ASC_ALLOW_WRITES`: editing the App Store listing (App Information,
 product page text and screenshots), managing signing (bundle IDs and capabilities, certificates,
-provisioning profiles, devices), TestFlight groups/testers/builds, and the App Store release flow
-(versions, builds, review submissions).
+provisioning profiles, devices), TestFlight groups/testers/builds, the App Store release flow
+(versions, builds, review submissions, phased release), uploading builds without Xcode or Transporter,
+replying to customer reviews, and submitting Mac software to Apple's notary service.
 
 > It deliberately does **not** scrape App Store Connect with your Apple ID / password (no headless
 > browser, no internal `iris` API) and does **not** send email to testers. Some third-party
@@ -57,16 +58,16 @@ may be escaped as `\n`). The key is read locally and used only to sign short-liv
 
 ## Configuration
 
-| Variable               | Required | Description                                                                                                                                                                                                                                      |
-| ---------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `ASC_KEY_ID`           | yes      | App Store Connect API **Key ID**.                                                                                                                                                                                                                |
-| `ASC_ISSUER_ID`        | yes      | App Store Connect API **Issuer ID** (per team).                                                                                                                                                                                                  |
-| `ASC_PRIVATE_KEY_PATH` | yes\*    | Path to the downloaded `.p8` private key file.                                                                                                                                                                                                   |
-| `ASC_PRIVATE_KEY`      | yes\*    | The `.p8` contents inline (alternative to the path; `\n` escapes are unescaped).                                                                                                                                                                 |
-| `ASC_VENDOR_NUMBER`    | no       | Vendor number; required only for `download_sales_report` / `download_finance_report`.                                                                                                                                                            |
-| `ASC_ALLOW_WRITES`     | no       | Set to `true` or `1` to register all write tools (see the tool catalog). Off by default.                                                                                                                                                         |
-| `ASC_UPLOAD_DIR`       | no       | Directory `upload_app_screenshots` may read from. Required for uploads; only `.png`/`.jpg`/`.jpeg` files inside it (after resolving symlinks, max 30 MB each) are accepted.                                                                      |
-| `ASC_DOWNLOAD_DIR`     | no       | Directory `download_profile` may write `.mobileprovision` files to. Required to save a profile to disk (`return_base64` works without it); only relative paths inside it ending in `.mobileprovision` are accepted, symlinks are never followed. |
+| Variable               | Required | Description                                                                                                                                                                                                                                                                                          |
+| ---------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ASC_KEY_ID`           | yes      | App Store Connect API **Key ID**.                                                                                                                                                                                                                                                                    |
+| `ASC_ISSUER_ID`        | yes      | App Store Connect API **Issuer ID** (per team).                                                                                                                                                                                                                                                      |
+| `ASC_PRIVATE_KEY_PATH` | yes\*    | Path to the downloaded `.p8` private key file.                                                                                                                                                                                                                                                       |
+| `ASC_PRIVATE_KEY`      | yes\*    | The `.p8` contents inline (alternative to the path; `\n` escapes are unescaped).                                                                                                                                                                                                                     |
+| `ASC_VENDOR_NUMBER`    | no       | Vendor number; required only for `download_sales_report` / `download_finance_report`.                                                                                                                                                                                                                |
+| `ASC_ALLOW_WRITES`     | no       | Set to `true` or `1` to register all write tools (see the tool catalog). Off by default.                                                                                                                                                                                                             |
+| `ASC_UPLOAD_DIR`       | no       | Directory the upload tools may read from; required for them. After resolving symlinks only files inside it are accepted: `.png`/`.jpg`/`.jpeg` (max 30 MB) for `upload_app_screenshots`, `.ipa`/`.pkg` (max 4 GB) for `upload_build`, `.zip`/`.dmg`/`.pkg` (max 5 GB) for `submit_for_notarization`. |
+| `ASC_DOWNLOAD_DIR`     | no       | Directory `download_profile` may write `.mobileprovision` files to. Required to save a profile to disk (`return_base64` works without it); only relative paths inside it ending in `.mobileprovision` are accepted, symlinks are never followed.                                                     |
 
 \* Provide **either** `ASC_PRIVATE_KEY_PATH` **or** `ASC_PRIVATE_KEY`.
 
@@ -75,7 +76,7 @@ may be escaped as `\n`). The key is read locally and used only to sign short-liv
 By default the server registers only read tools. Tester feedback, crash logs and customer reviews are
 text written by strangers, and an agent that reads them next to write tools could be talked into
 changing your account by a crafted comment. Only set `ASC_ALLOW_WRITES` when you want the agent to
-change something (edit the listing, set up signing, manage TestFlight, submit a release), ideally in a
+change something (edit the listing, set up signing, manage TestFlight, upload a build, submit a release), ideally in a
 separate MCP server entry that you enable for that task:
 
 ```json
@@ -89,7 +90,7 @@ separate MCP server entry that you enable for that task:
         "ASC_ISSUER_ID": "12a3b456-7890-1234-5678-9abcdef01234",
         "ASC_PRIVATE_KEY_PATH": "/path/to/AuthKey_ABCD123456.p8",
         "ASC_ALLOW_WRITES": "true",
-        "ASC_UPLOAD_DIR": "/path/to/screenshots",
+        "ASC_UPLOAD_DIR": "/path/to/uploads",
         "ASC_DOWNLOAD_DIR": "/path/to/profiles"
       }
     }
@@ -144,6 +145,9 @@ With writes enabled:
 - "Enable push notifications on com.acme.app, then create an App Store profile named 'Acme App Store' with my distribution certificate and save it to my profiles folder."
 - "Create an external beta group 'Friends', add these testers and the latest build, and submit the build for beta review."
 - "Create version 1.0.0, attach build 12, set release after approval and submit it to App Review."
+- "Upload build/App.ipa as 1.4.0 (42), wait until it is processed and give it to the internal group."
+- "Version 1.4.0 is approved: turn on phased release and release it. Pause the rollout if crashes go up."
+- "Notarize dist/Acme.dmg and tell me what the notary log says."
 
 ## Tools
 
@@ -162,13 +166,23 @@ registered when `ASC_ALLOW_WRITES` is set; everything else is read-only.
 
 **Apps & builds**
 
-| Tool                    | Description                                                                                             |
-| ----------------------- | ------------------------------------------------------------------------------------------------------- |
-| `list_apps`             | Apps in the account (id, name, bundleId, sku). Filter by bundle ID.                                     |
-| `get_app`               | One app by ID.                                                                                          |
-| `list_builds`           | TestFlight builds for an app (version, processing state, expiry) with their TestFlight beta state.      |
-| `get_build`             | One build with its pre-release version and beta state.                                                  |
-| `list_customer_reviews` | Public App Store reviews for a released app, with your published response. Distinct from beta feedback. |
+| Tool                              | Description                                                                                             |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `list_apps`                       | Apps in the account (id, name, bundleId, sku). Filter by bundle ID.                                     |
+| `get_app`                         | One app by ID.                                                                                          |
+| `list_builds`                     | TestFlight builds for an app (version, processing state, expiry) with their TestFlight beta state.      |
+| `get_build`                       | One build with its pre-release version and beta state.                                                  |
+| `list_customer_reviews`           | Public App Store reviews for a released app, with your published response. Distinct from beta feedback. |
+| `reply_to_customer_review`        | **Writes, public.** Publish (or replace) your developer response to a review.                           |
+| `delete_customer_review_response` | **Writes, destructive.** Delete your developer response to a review.                                    |
+
+**Build uploads** (`upload_build` needs `ASC_ALLOW_WRITES` and `ASC_UPLOAD_DIR`)
+
+| Tool                 | Description                                                                                                                                           |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_build_uploads` | Every binary sent to App Store Connect (by this server, Xcode or Transporter) with its upload state, Apple's errors/warnings and the resulting build. |
+| `get_build_upload`   | One upload with its state, files and resulting build; poll it after `upload_build`.                                                                   |
+| `upload_build`       | **Writes.** Upload a signed `.ipa` (iOS, tvOS, visionOS) or `.pkg` (macOS) from `ASC_UPLOAD_DIR` without Xcode or Transporter.                        |
 
 **TestFlight build status & metrics**
 
@@ -182,21 +196,24 @@ registered when `ASC_ALLOW_WRITES` is set; everything else is read-only.
 | `set_build_export_compliance`  | **Writes.** Answer the export compliance question (`usesNonExemptEncryption`) for a build.                                  |
 | `set_build_whats_new`          | **Writes.** Set a build's "What to Test" text for a locale (creates the locale if missing).                                 |
 | `submit_build_for_beta_review` | **Writes.** Submit a build for beta app review (needed for external groups).                                                |
+| `expire_build`                 | **Writes, destructive.** Expire a build so it can no longer be installed or submitted (cannot be undone).                   |
 
 **Beta testers & groups**
 
-| Tool                             | Description                                                                  |
-| -------------------------------- | ---------------------------------------------------------------------------- |
-| `list_beta_groups`               | Beta groups for an app (internal/external, public link, feedback enabled).   |
-| `list_beta_testers`              | Beta testers (name, email, invite type, state). Filter by app/group/email.   |
-| `list_group_testers`             | Testers in a specific beta group.                                            |
-| `create_beta_group`              | **Writes.** Create an internal or external beta group.                       |
-| `delete_beta_group`              | **Writes, destructive.** Delete a beta group.                                |
-| `add_beta_tester`                | **Writes.** Create a tester by email in groups (Apple emails an invitation). |
-| `add_testers_to_beta_group`      | **Writes.** Add existing testers to a group.                                 |
-| `remove_testers_from_beta_group` | **Writes, destructive.** Remove testers from a group.                        |
-| `add_builds_to_beta_group`       | **Writes.** Make builds available to a group.                                |
-| `remove_builds_from_beta_group`  | **Writes, destructive.** Remove builds from a group.                         |
+| Tool                             | Description                                                                                  |
+| -------------------------------- | -------------------------------------------------------------------------------------------- |
+| `list_beta_groups`               | Beta groups for an app (internal/external, public link, feedback enabled).                   |
+| `list_beta_testers`              | Beta testers (name, email, invite type, state). Filter by app/group/email.                   |
+| `list_group_testers`             | Testers in a specific beta group.                                                            |
+| `create_beta_group`              | **Writes.** Create an internal or external beta group.                                       |
+| `delete_beta_group`              | **Writes, destructive.** Delete a beta group.                                                |
+| `add_beta_tester`                | **Writes.** Create a tester by email in groups (Apple emails an invitation).                 |
+| `add_testers_to_beta_group`      | **Writes.** Add existing testers to a group.                                                 |
+| `remove_testers_from_beta_group` | **Writes, destructive.** Remove testers from a group.                                        |
+| `add_builds_to_beta_group`       | **Writes.** Make builds available to a group.                                                |
+| `remove_builds_from_beta_group`  | **Writes, destructive.** Remove builds from a group.                                         |
+| `update_beta_group`              | **Writes.** Rename a group, switch its public link or tester limit, turn feedback on or off. |
+| `remove_beta_tester`             | **Writes, destructive.** Remove a tester from one app or from the whole team.                |
 
 **Analytics & reports**
 
@@ -281,7 +298,9 @@ Configure), **then** create the profile, because a profile's entitlements are fi
 The API cannot create the app record itself; create the app once in the App Store Connect web UI. The
 release flow is then: `create_app_store_version` (or `update_app_store_version` for the release type),
 `set_app_store_version_build`, fill in the localizations, `create_review_submission`,
-`add_review_submission_item`, `submit_review_submission`.
+`add_review_submission_item`, `submit_review_submission`. For a staged rollout call
+`create_phased_release` before the version goes live; a version with manual release is published with
+`release_app_store_version` once it is approved.
 
 | Tool                           | Description                                                                                                |
 | ------------------------------ | ---------------------------------------------------------------------------------------------------------- |
@@ -293,6 +312,22 @@ release flow is then: `create_app_store_version` (or `update_app_store_version` 
 | `add_review_submission_item`   | **Writes.** Add an App Store version to a submission.                                                      |
 | `submit_review_submission`     | **Writes, consequential.** Send the submission to App Review.                                              |
 | `cancel_review_submission`     | **Writes, destructive.** Cancel a submission that is waiting for or in review.                             |
+| `create_phased_release`        | **Writes.** Turn on the 7-day phased release for a version that is not released yet.                       |
+| `update_phased_release`        | **Writes, consequential.** Pause or resume a phased release, or release to all users at once.              |
+| `delete_phased_release`        | **Writes, destructive.** Turn phased release off again before the rollout started.                         |
+| `release_app_store_version`    | **Writes, consequential.** Release an approved version that is pending developer release.                  |
+
+**macOS notarization** (`submit_for_notarization` needs `ASC_ALLOW_WRITES` and `ASC_UPLOAD_DIR`)
+
+For Mac software distributed outside the App Store with a Developer ID certificate. These tools use
+Apple's [Notary API](https://developer.apple.com/documentation/notaryapi) with the same API key.
+
+| Tool                            | Description                                                                                       |
+| ------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `list_notarization_submissions` | The team's 100 most recent submissions with name, date and status.                                |
+| `get_notarization_submission`   | Status of one submission (Accepted, In Progress, Invalid, Rejected).                              |
+| `get_notarization_log`          | The notary log of a finished submission: every issue with its path and architecture.              |
+| `submit_for_notarization`       | **Writes.** Upload a signed `.zip`, `.dmg` or `.pkg` from `ASC_UPLOAD_DIR` to the notary service. |
 
 **Performance & diagnostics**
 
@@ -316,7 +351,7 @@ release flow is then: `create_app_store_version` (or `update_app_store_version` 
 
 - **Read-only unless `ASC_ALLOW_WRITES` is set.** With it, the tools marked **Writes** change your
   account: listing tools (`update_*`, `upload_app_screenshots`), signing and provisioning, TestFlight
-  groups/testers/builds and the App Store release flow. Every write tool carries MCP annotations
+  groups/testers/builds, build uploads, the App Store release flow, review replies and notarization. Every write tool carries MCP annotations
   (`CREATE`, `OVERWRITE` or `DESTRUCTIVE`) so clients can ask before running it.
   `create_analytics_report_request` is always available: it only requests an analytics snapshot so the
   data can be read and does not change your app.
@@ -347,6 +382,22 @@ release flow is then: `create_app_store_version` (or `update_app_store_version` 
   you pass `delete_first`, which deletes just enough previous screenshots up front (those are lost if
   an upload then fails). Apple processes uploads asynchronously, so a screenshot can still fail
   processing after the previous ones were deleted; check with `list_app_screenshot_sets`.
+- **Build uploads** only read `.ipa`/`.pkg` files inside `ASC_UPLOAD_DIR` (symlinks resolved first,
+  max 4 GB). `upload_build` needs the version and build number of the binary because it does not open
+  the archive; they must match its `Info.plist`. Only the binary itself is sent, without the analysis
+  files Xcode adds. The call returns when the file is delivered; Apple processes it asynchronously and
+  reports problems in the upload state, so poll `get_build_upload`. If the transfer fails the upload
+  record is deleted again.
+- **Notarization** only reads `.zip`/`.dmg`/`.pkg` files inside `ASC_UPLOAD_DIR` (max 5 GB). Apple
+  hands out temporary storage credentials per submission; the file is uploaded there and the
+  credentials are never returned to the agent. A submission cannot be withdrawn. Stapling the ticket
+  still needs `xcrun stapler staple` on a Mac; without it Gatekeeper looks the ticket up online. The
+  software must already be signed with a Developer ID certificate, hardened runtime and a secure
+  timestamp.
+- **Review replies are public.** `reply_to_customer_review` publishes text on the App Store under the
+  review. The review itself is untrusted input, so keep a human in the loop for replies.
+- **Irreversible releases.** `release_app_store_version`, `update_phased_release` with `COMPLETE` and
+  `expire_build` cannot be undone.
 - **TestFlight feedback** requires builds uploaded with feedback enabled and is retained by Apple for
   a limited window (~90 days). The tester's typed comment is the `comment` field on a screenshot
   submission.

@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AppStoreConnectClient, JsonApiResource, QueryParams } from "../asc/client.js";
 import { ok, err, flattenResource } from "../asc/format.js";
-import { CREATE, DESTRUCTIVE, READ_ONLY } from "./shared.js";
+import { CREATE, DESTRUCTIVE, OVERWRITE, READ_ONLY } from "./shared.js";
 
 const GROUP_FIELDS =
   "name,isInternalGroup,publicLinkEnabled,publicLinkLimit,publicLink,feedbackEnabled,createdDate";
@@ -265,6 +265,77 @@ export function registerTesterTools(
           refs("builds", build_ids),
         );
         return ok({ groupId: group_id, removed: build_ids });
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
+
+  server.tool(
+    "update_beta_group",
+    "Writes. Change a TestFlight beta group: rename it, turn its public invitation link on or off, limit how many testers can join through the link, or turn tester feedback on or off. Only the given fields change. Turning the public link off invalidates the link for people who have not joined yet. Group ids come from list_beta_groups.",
+    {
+      group_id: z.string().describe("Beta group ID (from list_beta_groups)"),
+      name: z.string().optional().describe("New group name"),
+      public_link_enabled: z.boolean().optional().describe("Turn the public link on or off"),
+      public_link_limit_enabled: z
+        .boolean()
+        .optional()
+        .describe("Whether the public link has a tester limit"),
+      public_link_limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(10000)
+        .optional()
+        .describe("Max testers that can join through the public link"),
+      feedback_enabled: z.boolean().optional().describe("Whether testers can send feedback"),
+    },
+    OVERWRITE,
+    async (args) => {
+      try {
+        const attributes = Object.fromEntries(
+          Object.entries({
+            name: args.name,
+            publicLinkEnabled: args.public_link_enabled,
+            publicLinkLimitEnabled: args.public_link_limit_enabled,
+            publicLinkLimit: args.public_link_limit,
+            feedbackEnabled: args.feedback_enabled,
+          }).filter(([, v]) => v !== undefined),
+        );
+        if (Object.keys(attributes).length === 0) throw new Error("Nothing to update");
+        const res = await client.patch(`/betaGroups/${encodeURIComponent(args.group_id)}`, {
+          data: { type: "betaGroups", id: args.group_id, attributes },
+        });
+        return ok(flattenResource(res.data as JsonApiResource));
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
+
+  server.tool(
+    "remove_beta_tester",
+    "Writes, destructive. Remove a tester from TestFlight. With app_id the tester loses access to that app only (all of its groups and builds); without it the tester is removed from every app of the team. To take a tester out of a single group use remove_testers_from_beta_group. Tester ids come from list_beta_testers.",
+    {
+      tester_id: z.string().describe("Beta tester ID (from list_beta_testers)"),
+      app_id: z
+        .string()
+        .optional()
+        .describe("Only remove the tester from this app (from list_apps)"),
+    },
+    DESTRUCTIVE,
+    async ({ tester_id, app_id }) => {
+      try {
+        if (app_id) {
+          await client.delete(
+            `/apps/${encodeURIComponent(app_id)}/relationships/betaTesters`,
+            refs("betaTesters", [tester_id]),
+          );
+        } else {
+          await client.delete(`/betaTesters/${encodeURIComponent(tester_id)}`);
+        }
+        return ok({ removed: tester_id, ...(app_id ? { appId: app_id } : {}) });
       } catch (e) {
         return err(e);
       }

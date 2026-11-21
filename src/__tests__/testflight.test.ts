@@ -230,7 +230,21 @@ describe("testflight tools", () => {
       "set_build_export_compliance",
       "set_build_whats_new",
       "submit_build_for_beta_review",
+      "expire_build",
     ]);
+  });
+
+  it("expire_build patches expired", async () => {
+    mockFetch.mockResolvedValueOnce(
+      resp({ data: { type: "builds", id: "b1", attributes: { expired: true } } }),
+    );
+    const res = await tools.get("expire_build")!({ build_id: "b1" });
+    expect(sent(mockFetch)).toMatchObject({
+      method: "PATCH",
+      path: "/v1/builds/b1",
+      body: { data: { type: "builds", id: "b1", attributes: { expired: true } } },
+    });
+    expect(JSON.parse(res.content[0].text!)).toMatchObject({ id: "b1", expired: true });
   });
 
   it("set_build_export_compliance patches usesNonExemptEncryption", async () => {

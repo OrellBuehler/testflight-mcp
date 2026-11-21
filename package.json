@@ -1,6 +1,6 @@
 {
   "name": "@orellbuehler/testflight-mcp",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "description": "Model Context Protocol server for TestFlight & App Store Connect: retrieve beta tester feedback (screenshots, crashes, crash logs), builds, testers, analytics and provisioning over the official App Store Connect API.",
   "type": "module",
   "bin": {
@@ -30,6 +30,11 @@
     "testflight",
     "app-store-connect",
     "apple",
+    "ios",
+    "macos",
+    "tvos",
+    "provisioning",
+    "notarization",
     "beta-testing",
     "feedback",
     "llm",

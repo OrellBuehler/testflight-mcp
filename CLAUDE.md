@@ -51,12 +51,18 @@ vendorNumber, allowWrites, uploadDir, downloadDir)`, and connects it over stdio.
   `getJson` (raw body + optional extra headers, for the non-JSON:API metrics/diagnostics endpoints),
   `post`, `patch`, `delete` (optional JSON body, for relationship removals), `postNoContent`
   (relationship adds, which answer 204), `downloadText`/`downloadBinary` (presigned asset URLs — **no** auth header),
+  `uploadPart` (presigned or signed upload URLs, optional longer timeout),
   `downloadGzipText` (analytics segments), `getGzippedReport` (gzipped sales/finance CSV). Throws on
   non-2xx with the response body in the message.
 - **`src/asc/format.ts`** — shared helpers: `ok`/`err` (MCP content envelopes; `ok` passes strings
   through unquoted), `imageResult`, and JSON:API helpers `singleRef`, `manyRefs`, `findIncluded`,
   `flattenResource`, `shapeResource` (lift `attributes` to top level + resolve named relationships
   from `included`).
+- **`src/asc/files.ts`** — `resolveUploadFile(uploadDir, path, rule)`: the one place that confines
+  uploads to `ASC_UPLOAD_DIR` (real path containment, extension of the link and its target, regular
+  file, size limit), plus `readBytes` and `hashFile`. Every upload tool goes through it.
+- **`src/asc/sigv4.ts`** — `signRequest`: AWS Signature V4 for the S3 upload of a notarization
+  submission (Apple returns temporary AWS credentials). Tested against AWS's documented examples.
 - **`src/asc/profile.ts`** — `decodeProfile(base64)`: pulls the embedded XML plist out of a
   CMS-signed `.mobileprovision` (no signature verification), parses it with a small built-in plist
   parser and returns team, dates, entitlements, devices, certificate serials and an inferred type.
@@ -66,10 +72,13 @@ vendorNumber, allowWrites, uploadDir, downloadDir)`, and connects it over stdio.
   metrics), `testers`, `analytics` (also takes the default vendor number), `provisioning`,
   `metadata` (App Store versions + review pipeline), `diagnostics` (perf/power metrics, diagnostic
   signatures and logs), `ci` (Xcode Cloud), `screenshots` (App Store screenshot sets + upload), `listing` (App Information, age rating,
-  version text — writes), `release` (App Store version create/build attach, review submissions —
-  writes only). `listing`, `screenshots`, `release`, `testers`, `testflight` and `provisioning` take
-  `allowWrites` (third argument; `provisioning` is `(server, client, allowWrites, downloadDir)` and
-  `screenshots` is `(…, allowWrites, uploadDir)`). `provisioning` holds bundle IDs, capabilities,
+  version text — writes), `release` (App Store version create/build attach, review submissions, phased release,
+  release request — writes only), `reviews` (customer review responses — writes only), `uploads`
+  (build uploads: list/get and `upload_build`), `notary` (macOS notarization through the Notary API on
+  `appstoreconnect.apple.com/notary/v2`, same JWT). `listing`, `screenshots`, `release`, `reviews`, `uploads`, `notary`, `testers`,
+  `testflight` and `provisioning` take `allowWrites` (third argument; `provisioning` is
+  `(server, client, allowWrites, downloadDir)` and `screenshots`, `uploads` and `notary` are
+  `(…, allowWrites, uploadDir)`). `provisioning` holds bundle IDs, capabilities,
   certificates, profiles and devices (reads and writes); `testers` the beta group/tester writes;
   `testflight` the build writes (export compliance, What to Test, beta review).
 - **`src/tools/shared.ts`** — the tool annotation presets (`READ_ONLY`, `CREATE`, `OVERWRITE`,
@@ -91,9 +100,11 @@ try { return ok(...); } catch (e) { return err(e); } })`. The third argument is 
 - **Stranger-written text is untrusted.** Tools that return tester comments, crash logs or customer
   reviews append `UNTRUSTED_NOTE` to their description. Do the same for any new tool that returns
   text written by third parties.
-- **Uploads only read from `ASC_UPLOAD_DIR`.** `upload_app_screenshots` resolves real paths, rejects
-  anything outside that directory, non-PNG/JPEG files and files over 30 MB, and validates every file
-  before the first API call. With `replace_existing` it uploads and commits the new screenshots
+- **Uploads only read from `ASC_UPLOAD_DIR`.** `upload_app_screenshots`, `upload_build` and
+  `submit_for_notarization` go through `resolveUploadFile` (`asc/files.ts`): real paths, nothing
+  outside that directory, only the tool's own extensions and size limit, plus a magic-number check in
+  the tool, all before the first API call. `upload_build` deletes its upload record when the transfer
+  fails. The notary upload credentials and the presigned upload URLs are never returned to the agent. With `replace_existing` it uploads and commits the new screenshots
   before deleting the previous ones; keep that order.
 - **Profiles are only written to `ASC_DOWNLOAD_DIR`.** `download_profile` takes a relative
   `.mobileprovision` path, resolves the real path of its parent directory and rejects anything outside
@@ -113,10 +124,12 @@ try { return ok(...); } catch (e) { return err(e); } })`. The third argument is 
 - **Scope: retrieval first, writes opt-in.** Read tools are the default. Writes are limited to what
   the README catalog lists: the App Store listing (`tools/listing.ts`, `upload_app_screenshots`),
   signing/provisioning (bundle IDs, capabilities, certificate creation from a CSR, profiles, devices),
-  TestFlight groups/testers/builds/export compliance/What to Test/beta review, and the App Store
-  release flow (`tools/release.ts`). Pick the annotation preset by effect: `CREATE` for new resources,
-  `OVERWRITE` for idempotent updates, `DESTRUCTIVE` for deletes, removals, cancellations and anything
-  that sends something to Apple review. The other `POST` outside the gate is
+  TestFlight groups/testers/builds/export compliance/What to Test/beta review, build uploads, the
+  App Store release flow (`tools/release.ts`), customer review responses and notarization
+  submissions. Pick the annotation preset by effect: `CREATE` for new resources,
+  `OVERWRITE` for idempotent updates, `DESTRUCTIVE` for deletes, removals, cancellations, anything
+  that sends something to Apple review and anything that cannot be undone (releasing a version,
+  completing a phased release, expiring a build). The other `POST` outside the gate is
   `create_analytics_report_request`, which only requests a report snapshot to _read_ analytics.
   **Deliberately excluded** (and must not be re-added from the upstream reference projects):
   Apple-ID-password browser/Playwright scraping of the internal `iris` API, SMTP "respond to tester"
@@ -135,13 +148,14 @@ covers pagination, gzip and error handling; `jwt.test.ts` signs with a generated
 asserts header/claims/caching; `config.ts` reads env at import time and exits if it's missing, so
 `config.test.ts` `vi.stubEnv(...)` then dynamically `import()`s it.
 
-Gated modules (`listing`, `screenshots`, `release`, and the write halves of `provisioning`, `testers`
-and `testflight`) take `allowWrites` in the test `collect()` helper and assert
+Gated modules (`listing`, `screenshots`, `release`, `reviews`, and the write halves of `provisioning`,
+`testers`, `testflight`, `uploads` and `notary`) take `allowWrites` in the test `collect()` helper and assert
 the **exact list of registered tool names** when it is false, so a new write tool added above the
 gate fails the test. `server.test.ts` connects a real MCP client over an in-memory transport and
 asserts the tool list with and without writes, that every tool has annotations, and that the tools
-returning third-party text carry the untrusted note. `screenshots.test.ts` works in a real temp
-directory (including real symlinks) to cover traversal and symlink escapes; the `download_profile`
+returning third-party text carry the untrusted note. `screenshots.test.ts`, `uploads.test.ts` and
+`notary.test.ts` work in a real temp directory (including real symlinks) to cover traversal and symlink
+escapes; the `download_profile`
 tests in `provisioning.test.ts` do the same for `ASC_DOWNLOAD_DIR`. `profile-fixture.ts` builds fake
 CMS-wrapped profiles (with a throwaway self-signed certificate) for `profile.test.ts` and
 `get_profile`/`download_profile`.

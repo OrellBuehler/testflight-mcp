@@ -91,7 +91,51 @@ describe("tester tools", () => {
       "remove_testers_from_beta_group",
       "add_builds_to_beta_group",
       "remove_builds_from_beta_group",
+      "update_beta_group",
+      "remove_beta_tester",
     ]);
+  });
+
+  it("update_beta_group patches only the given attributes", async () => {
+    mockFetch.mockResolvedValueOnce(
+      resp({ data: { type: "betaGroups", id: "g1", attributes: { publicLinkEnabled: true } } }),
+    );
+    await tools.get("update_beta_group")!({
+      group_id: "g1",
+      public_link_enabled: true,
+      public_link_limit_enabled: true,
+      public_link_limit: 50,
+    });
+    expect(sent(mockFetch)).toMatchObject({
+      method: "PATCH",
+      path: "/v1/betaGroups/g1",
+    });
+    expect(sent(mockFetch).body).toEqual({
+      data: {
+        type: "betaGroups",
+        id: "g1",
+        attributes: { publicLinkEnabled: true, publicLinkLimitEnabled: true, publicLinkLimit: 50 },
+      },
+    });
+  });
+
+  it("update_beta_group refuses an empty update", async () => {
+    const res = await tools.get("update_beta_group")!({ group_id: "g1" });
+    expect(res.isError).toBe(true);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("remove_beta_tester removes the tester from one app or from the team", async () => {
+    mockFetch.mockResolvedValue({ ok: true, status: 204 });
+    await tools.get("remove_beta_tester")!({ tester_id: "t1", app_id: "A1" });
+    await tools.get("remove_beta_tester")!({ tester_id: "t1" });
+    expect(sent(mockFetch)).toMatchObject({
+      method: "DELETE",
+      path: "/v1/apps/A1/relationships/betaTesters",
+      body: { data: [{ type: "betaTesters", id: "t1" }] },
+    });
+    expect(sent(mockFetch, 1)).toMatchObject({ method: "DELETE", path: "/v1/betaTesters/t1" });
+    expect(sent(mockFetch, 1).body).toBeUndefined();
   });
 
   it("create_beta_group posts the group with its app and only the given attributes", async () => {

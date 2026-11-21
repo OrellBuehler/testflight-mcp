@@ -53,6 +53,10 @@ describe("release tools", () => {
       "add_review_submission_item",
       "submit_review_submission",
       "cancel_review_submission",
+      "create_phased_release",
+      "update_phased_release",
+      "delete_phased_release",
+      "release_app_store_version",
     ]);
   });
 
@@ -162,6 +166,80 @@ describe("release tools", () => {
       method: "PATCH",
       path: "/v1/reviewSubmissions/s1",
       body: { data: { type: "reviewSubmissions", id: "s1", attributes: { canceled: true } } },
+    });
+  });
+
+  it("create_phased_release posts an inactive phased release for the version", async () => {
+    mockFetch.mockResolvedValueOnce(
+      resp({ data: { type: "appStoreVersionPhasedReleases", id: "p1", attributes: {} } }),
+    );
+    const res = await tools.get("create_phased_release")!({ version_id: "v1" });
+    expect(sent(mockFetch)).toEqual({
+      method: "POST",
+      path: "/v1/appStoreVersionPhasedReleases",
+      body: {
+        data: {
+          type: "appStoreVersionPhasedReleases",
+          attributes: { phasedReleaseState: "INACTIVE" },
+          relationships: { appStoreVersion: { data: { type: "appStoreVersions", id: "v1" } } },
+        },
+      },
+    });
+    expect(JSON.parse(res.content[0].text!)).toMatchObject({ id: "p1" });
+  });
+
+  it("update_phased_release patches the state", async () => {
+    mockFetch.mockResolvedValueOnce(
+      resp({
+        data: {
+          type: "appStoreVersionPhasedReleases",
+          id: "p1",
+          attributes: { phasedReleaseState: "PAUSED", currentDayNumber: 3 },
+        },
+      }),
+    );
+    const res = await tools.get("update_phased_release")!({
+      phased_release_id: "p1",
+      state: "PAUSED",
+    });
+    expect(sent(mockFetch)).toEqual({
+      method: "PATCH",
+      path: "/v1/appStoreVersionPhasedReleases/p1",
+      body: {
+        data: {
+          type: "appStoreVersionPhasedReleases",
+          id: "p1",
+          attributes: { phasedReleaseState: "PAUSED" },
+        },
+      },
+    });
+    expect(JSON.parse(res.content[0].text!)).toMatchObject({ currentDayNumber: 3 });
+  });
+
+  it("delete_phased_release deletes it", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 204 });
+    const res = await tools.get("delete_phased_release")!({ phased_release_id: "p1" });
+    expect(sent(mockFetch)).toMatchObject({
+      method: "DELETE",
+      path: "/v1/appStoreVersionPhasedReleases/p1",
+    });
+    expect(JSON.parse(res.content[0].text!)).toEqual({ deleted: "p1" });
+  });
+
+  it("release_app_store_version posts a release request for the version", async () => {
+    mockFetch.mockResolvedValueOnce(
+      resp({ data: { type: "appStoreVersionReleaseRequests", id: "r1" } }),
+    );
+    await tools.get("release_app_store_version")!({ version_id: "v1" });
+    expect(sent(mockFetch)).toEqual({
+      method: "POST",
+      path: "/v1/appStoreVersionReleaseRequests",
+      body: {
+        data: {
+          type: "appStoreVersionReleaseRequests",
+          relationships: { appStoreVersion: { data: { type: "appStoreVersions", id: "v1" } } },
+        },
+      },
     });
   });
 

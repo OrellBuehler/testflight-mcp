@@ -13,6 +13,9 @@ import { registerCiTools } from "./tools/ci.js";
 import { registerScreenshotTools } from "./tools/screenshots.js";
 import { registerListingTools } from "./tools/listing.js";
 import { registerReleaseTools } from "./tools/release.js";
+import { registerReviewTools } from "./tools/reviews.js";
+import { registerBuildUploadTools } from "./tools/uploads.js";
+import { registerNotaryTools } from "./tools/notary.js";
 
 const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
 
@@ -36,5 +39,8 @@ export function createServer(
   registerScreenshotTools(server, client, allowWrites, uploadDir);
   registerListingTools(server, client, allowWrites);
   registerReleaseTools(server, client, allowWrites);
+  registerReviewTools(server, client, allowWrites);
+  registerBuildUploadTools(server, client, allowWrites, uploadDir);
+  registerNotaryTools(server, client, allowWrites, uploadDir);
   return server;
 }
