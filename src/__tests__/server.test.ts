@@ -14,6 +14,45 @@ const WRITE_TOOLS = [
   "upload_app_screenshots",
 ];
 
+const MANAGEMENT_WRITES = {
+  create: [
+    "register_bundle_id",
+    "enable_capability",
+    "create_certificate",
+    "create_profile",
+    "register_device",
+    "create_beta_group",
+    "add_beta_tester",
+    "add_testers_to_beta_group",
+    "add_builds_to_beta_group",
+    "submit_build_for_beta_review",
+    "create_app_store_version",
+    "create_review_submission",
+    "add_review_submission_item",
+  ],
+  overwrite: [
+    "update_bundle_id",
+    "update_capability",
+    "download_profile",
+    "update_device",
+    "set_build_export_compliance",
+    "set_build_whats_new",
+    "set_app_store_version_build",
+  ],
+  destructive: [
+    "delete_bundle_id",
+    "disable_capability",
+    "delete_profile",
+    "delete_beta_group",
+    "remove_testers_from_beta_group",
+    "remove_builds_from_beta_group",
+    "submit_review_submission",
+    "cancel_review_submission",
+  ],
+};
+const MANAGEMENT_TOOLS = Object.values(MANAGEMENT_WRITES).flat();
+const NEW_READ_TOOLS = ["get_bundle_id", "get_certificate", "get_profile"];
+
 const UNTRUSTED_TOOLS = [
   "list_screenshot_feedback",
   "list_crash_feedback",
@@ -36,9 +75,12 @@ async function listTools(allowWrites?: boolean) {
 describe("server", () => {
   it("registers no write tools by default", async () => {
     const names = (await listTools()).map((t) => t.name);
-    expect(names).toHaveLength(44);
+    expect(names).toHaveLength(47);
     expect(new Set(names).size).toBe(names.length);
-    expect(names.filter((n) => WRITE_TOOLS.includes(n))).toEqual([]);
+    expect(names.filter((n) => WRITE_TOOLS.includes(n) || MANAGEMENT_TOOLS.includes(n))).toEqual(
+      [],
+    );
+    for (const name of NEW_READ_TOOLS) expect(names).toContain(name);
     for (const tool of await listTools()) {
       if (tool.name === "create_analytics_report_request") continue;
       expect(tool.annotations?.readOnlyHint, tool.name).toBe(true);
@@ -47,8 +89,12 @@ describe("server", () => {
 
   it("registers the write tools when writes are allowed", async () => {
     const names = (await listTools(true)).map((t) => t.name);
-    expect(names).toHaveLength(51);
+    expect(names).toHaveLength(82);
+    expect(new Set(names).size).toBe(names.length);
     expect(names.filter((n) => WRITE_TOOLS.includes(n)).sort()).toEqual([...WRITE_TOOLS].sort());
+    expect(names.filter((n) => MANAGEMENT_TOOLS.includes(n)).sort()).toEqual(
+      [...MANAGEMENT_TOOLS].sort(),
+    );
   });
 
   it("annotates every tool", async () => {
@@ -70,6 +116,33 @@ describe("server", () => {
     }
     const request = tools.find((t) => t.name === "create_analytics_report_request");
     expect(request?.annotations).toMatchObject({ readOnlyHint: false, destructiveHint: false });
+  });
+
+  it("gives the management tools the matching annotation preset", async () => {
+    const tools = await listTools(true);
+    const expected = {
+      create: { destructiveHint: false, idempotentHint: false },
+      overwrite: { destructiveHint: true, idempotentHint: true },
+      destructive: { destructiveHint: true, idempotentHint: false },
+    };
+    for (const [kind, names] of Object.entries(MANAGEMENT_WRITES)) {
+      for (const name of names) {
+        const tool = tools.find((t) => t.name === name);
+        expect(tool?.annotations, name).toMatchObject({
+          readOnlyHint: false,
+          ...expected[kind as keyof typeof expected],
+        });
+      }
+    }
+  });
+
+  it("tells agents the API cannot manage iCloud containers", async () => {
+    const tools = await listTools(true);
+    for (const name of ["enable_capability", "update_capability"]) {
+      expect(tools.find((t) => t.name === name)?.description, name).toMatch(
+        /no iCloud container endpoints.*developer portal/i,
+      );
+    }
   });
 
   it("flags tools that return third-party text as untrusted", async () => {

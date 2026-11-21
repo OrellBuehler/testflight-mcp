@@ -12,6 +12,7 @@ import { registerDiagnosticsTools } from "./tools/diagnostics.js";
 import { registerCiTools } from "./tools/ci.js";
 import { registerScreenshotTools } from "./tools/screenshots.js";
 import { registerListingTools } from "./tools/listing.js";
+import { registerReleaseTools } from "./tools/release.js";
 
 const { version } = createRequire(import.meta.url)("../package.json") as { version: string };
 
@@ -25,8 +26,8 @@ export function createServer(
   const server = new McpServer({ name: "testflight-mcp", version });
   registerFeedbackTools(server, client);
   registerAppTools(server, client);
-  registerTestFlightTools(server, client);
-  registerTesterTools(server, client);
+  registerTestFlightTools(server, client, allowWrites);
+  registerTesterTools(server, client, allowWrites);
   registerAnalyticsTools(server, client, vendorNumber);
   registerProvisioningTools(server, client, allowWrites, downloadDir);
   registerMetadataTools(server, client);
@@ -34,5 +35,6 @@ export function createServer(
   registerCiTools(server, client);
   registerScreenshotTools(server, client, allowWrites, uploadDir);
   registerListingTools(server, client, allowWrites);
+  registerReleaseTools(server, client, allowWrites);
   return server;
 }
