@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AppStoreConnectClient, JsonApiResource, QueryParams } from "../asc/client.js";
 import { ok, err, flattenResource } from "../asc/format.js";
-import { CREATE, OVERWRITE, READ_ONLY } from "./shared.js";
+import { CREATE, DESTRUCTIVE, OVERWRITE, READ_ONLY } from "./shared.js";
 
 const BUILD_BETA_DETAIL_FIELDS = "autoNotifyEnabled,internalBuildState,externalBuildState";
 const BETA_REVIEW_SUBMISSION_FIELDS = "betaReviewState,submittedDate";
@@ -236,6 +236,23 @@ export function registerTestFlightTools(
             type: "betaAppReviewSubmissions",
             relationships: { build: { data: { type: "builds", id: build_id } } },
           },
+        });
+        return ok(flattenResource(res.data as JsonApiResource));
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
+
+  server.tool(
+    "expire_build",
+    "Writes, destructive. Expire a TestFlight build so testers can no longer install it and it can no longer be submitted. This cannot be undone; an expired build stays expired. Build ids come from list_builds.",
+    { build_id: z.string().describe("Build ID (from list_builds)") },
+    DESTRUCTIVE,
+    async ({ build_id }) => {
+      try {
+        const res = await client.patch(`/builds/${encodeURIComponent(build_id)}`, {
+          data: { type: "builds", id: build_id, attributes: { expired: true } },
         });
         return ok(flattenResource(res.data as JsonApiResource));
       } catch (e) {

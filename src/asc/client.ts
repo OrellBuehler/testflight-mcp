@@ -145,13 +145,14 @@ export class AppStoreConnectClient {
     url: string,
     method: string,
     headers: Record<string, string>,
-    body: Uint8Array,
+    body: Uint8Array | Blob,
+    timeoutMs = this.timeoutMs,
   ): Promise<void> {
     const res = await fetch(url, {
       method,
       headers,
-      body: new Uint8Array(body),
-      signal: AbortSignal.timeout(this.timeoutMs),
+      body: body instanceof Blob ? body : new Uint8Array(body),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}: failed to upload part`);
   }

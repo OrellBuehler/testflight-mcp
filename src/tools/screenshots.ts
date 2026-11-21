@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
-import { readFile, realpath, stat } from "node:fs/promises";
-import { basename, extname, isAbsolute, relative, resolve, sep } from "node:path";
+import { readFile } from "node:fs/promises";
+import { basename } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AppStoreConnectClient, JsonApiResource } from "../asc/client.js";
 import { ok, err, flattenResource, manyRefs, findIncluded } from "../asc/format.js";
+import { resolveUploadFile } from "../asc/files.js";
 import { DESTRUCTIVE, READ_ONLY } from "./shared.js";
 
 const SCREENSHOT_FIELDS = "fileName,fileSize,assetDeliveryState,sourceFileChecksum";
@@ -45,35 +46,18 @@ async function listSets(
   }));
 }
 
-function isImageExtension(path: string) {
-  return IMAGE_EXTENSIONS.includes(extname(path).toLowerCase());
-}
+const UPLOAD_RULE = {
+  tool: "upload_app_screenshots",
+  what: "screenshots",
+  kinds: "PNG/JPEG",
+  extensions: IMAGE_EXTENSIONS,
+  maxBytes: MAX_FILE_BYTES,
+};
 
 async function loadFiles(uploadDir: string | undefined, paths: string[]) {
-  if (!uploadDir) {
-    throw new Error(
-      "upload_app_screenshots is disabled because ASC_UPLOAD_DIR is not set. Set ASC_UPLOAD_DIR to the directory that holds the screenshots; only PNG/JPEG files inside it can be uploaded.",
-    );
-  }
-  const base = await realpath(uploadDir);
   const files = [];
   for (const path of paths) {
-    if (!isImageExtension(path)) {
-      throw new Error(`${path}: only .png, .jpg and .jpeg files can be uploaded`);
-    }
-    const real = await realpath(resolve(base, path));
-    const rel = relative(base, real);
-    if (!rel || rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {
-      throw new Error(`${path} is outside ASC_UPLOAD_DIR`);
-    }
-    if (!isImageExtension(real)) {
-      throw new Error(`${path}: only .png, .jpg and .jpeg files can be uploaded`);
-    }
-    const info = await stat(real);
-    if (!info.isFile()) throw new Error(`${path} is not a regular file`);
-    if (info.size > MAX_FILE_BYTES) {
-      throw new Error(`${path} is larger than ${MAX_FILE_BYTES / 1024 / 1024} MB`);
-    }
+    const { real } = await resolveUploadFile(uploadDir, path, UPLOAD_RULE);
     const bytes = await readFile(real);
     if (bytes.length > MAX_FILE_BYTES) {
       throw new Error(`${path} is larger than ${MAX_FILE_BYTES / 1024 / 1024} MB`);

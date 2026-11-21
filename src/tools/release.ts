@@ -167,4 +167,99 @@ export function registerReleaseTools(
       }
     },
   );
+
+  server.tool(
+    "create_phased_release",
+    "Writes. Turn on phased release for an App Store version that is not released yet: once the version goes live the automatic update reaches 1%, 2%, 5%, 10%, 20%, 50% and then 100% of users over 7 days, while anyone can still get it manually from the App Store. Created INACTIVE; it becomes ACTIVE when the version is released. Steer it afterwards with update_phased_release. Version ids come from list_app_store_versions.",
+    { version_id: z.string().describe("App Store version ID (from list_app_store_versions)") },
+    CREATE,
+    async ({ version_id }) => {
+      try {
+        const res = await client.post("/appStoreVersionPhasedReleases", {
+          data: {
+            type: "appStoreVersionPhasedReleases",
+            attributes: { phasedReleaseState: "INACTIVE" },
+            relationships: {
+              appStoreVersion: { data: { type: "appStoreVersions", id: version_id } },
+            },
+          },
+        });
+        return ok(flattenResource(res.data as JsonApiResource));
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
+
+  server.tool(
+    "update_phased_release",
+    "Writes, consequential. Steer a running phased release: PAUSED stops the rollout at its current percentage (for at most 30 days in total), ACTIVE resumes it, COMPLETE releases the update to all users at once and cannot be undone. The phased release id and its current state and day number come from get_app_store_version_status.",
+    {
+      phased_release_id: z
+        .string()
+        .describe("Phased release ID (phasedRelease.id in get_app_store_version_status)"),
+      state: z.enum(["ACTIVE", "PAUSED", "COMPLETE"]).describe("New phased release state"),
+    },
+    DESTRUCTIVE,
+    async ({ phased_release_id, state }) => {
+      try {
+        const res = await client.patch(
+          `/appStoreVersionPhasedReleases/${encodeURIComponent(phased_release_id)}`,
+          {
+            data: {
+              type: "appStoreVersionPhasedReleases",
+              id: phased_release_id,
+              attributes: { phasedReleaseState: state },
+            },
+          },
+        );
+        return ok(flattenResource(res.data as JsonApiResource));
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
+
+  server.tool(
+    "delete_phased_release",
+    "Writes, destructive. Turn phased release off again for an App Store version that has not started rolling out, so that the version reaches all users at once when it is released. The phased release id comes from get_app_store_version_status.",
+    {
+      phased_release_id: z
+        .string()
+        .describe("Phased release ID (phasedRelease.id in get_app_store_version_status)"),
+    },
+    DESTRUCTIVE,
+    async ({ phased_release_id }) => {
+      try {
+        await client.delete(
+          `/appStoreVersionPhasedReleases/${encodeURIComponent(phased_release_id)}`,
+        );
+        return ok({ deleted: phased_release_id });
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
+
+  server.tool(
+    "release_app_store_version",
+    "Writes, consequential. Release an approved App Store version that is waiting in PENDING_DEVELOPER_RELEASE (manual release) to the App Store now. This publishes the version to customers and cannot be undone. Check the state with get_app_store_version_status first. Version ids come from list_app_store_versions.",
+    { version_id: z.string().describe("App Store version ID (from list_app_store_versions)") },
+    DESTRUCTIVE,
+    async ({ version_id }) => {
+      try {
+        const res = await client.post("/appStoreVersionReleaseRequests", {
+          data: {
+            type: "appStoreVersionReleaseRequests",
+            relationships: {
+              appStoreVersion: { data: { type: "appStoreVersions", id: version_id } },
+            },
+          },
+        });
+        return ok(flattenResource(res.data as JsonApiResource));
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
 }
