@@ -13,8 +13,11 @@ Its focus is **TestFlight beta feedback retrieval** — pulling the screenshot f
 tester's comment), crash feedback and crash logs your testers submit — plus the surrounding context
 an agent needs to make sense of it: apps, builds, beta testers/groups, analytics & sales reports,
 provisioning, and App Store metadata. It talks **only to the official, documented API** using a
-standard App Store Connect API key (ES256 JWT), and is **read-only by default**. Editing the App Store
-listing (App Information, product page text and screenshots) is opt-in via `ASC_ALLOW_WRITES`.
+standard App Store Connect API key (ES256 JWT), and is **read-only by default**. Everything that
+changes your account is opt-in via `ASC_ALLOW_WRITES`: editing the App Store listing (App Information,
+product page text and screenshots), managing signing (bundle IDs and capabilities, certificates,
+provisioning profiles, devices), TestFlight groups/testers/builds, and the App Store release flow
+(versions, builds, review submissions).
 
 > It deliberately does **not** scrape App Store Connect with your Apple ID / password (no headless
 > browser, no internal `iris` API) and does **not** send email to testers. Some third-party
@@ -54,16 +57,16 @@ may be escaped as `\n`). The key is read locally and used only to sign short-liv
 
 ## Configuration
 
-| Variable               | Required | Description                                                                           |
-| ---------------------- | -------- | ------------------------------------------------------------------------------------- |
-| `ASC_KEY_ID`           | yes      | App Store Connect API **Key ID**.                                                     |
-| `ASC_ISSUER_ID`        | yes      | App Store Connect API **Issuer ID** (per team).                                       |
-| `ASC_PRIVATE_KEY_PATH` | yes\*    | Path to the downloaded `.p8` private key file.                                        |
-| `ASC_PRIVATE_KEY`      | yes\*    | The `.p8` contents inline (alternative to the path; `\n` escapes are unescaped).      |
-| `ASC_VENDOR_NUMBER`    | no       | Vendor number; required only for `download_sales_report` / `download_finance_report`. |
-
-| `ASC_ALLOW_WRITES` | no | Set to `true` or `1` to register the write tools (`update_*`, `upload_app_screenshots`). Off by default. |
-| `ASC_UPLOAD_DIR` | no | Directory `upload_app_screenshots` may read from. Required for uploads; only `.png`/`.jpg`/`.jpeg` files inside it (after resolving symlinks, max 30 MB each) are accepted. |
+| Variable               | Required | Description                                                                                                                                                                                                                                      |
+| ---------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ASC_KEY_ID`           | yes      | App Store Connect API **Key ID**.                                                                                                                                                                                                                |
+| `ASC_ISSUER_ID`        | yes      | App Store Connect API **Issuer ID** (per team).                                                                                                                                                                                                  |
+| `ASC_PRIVATE_KEY_PATH` | yes\*    | Path to the downloaded `.p8` private key file.                                                                                                                                                                                                   |
+| `ASC_PRIVATE_KEY`      | yes\*    | The `.p8` contents inline (alternative to the path; `\n` escapes are unescaped).                                                                                                                                                                 |
+| `ASC_VENDOR_NUMBER`    | no       | Vendor number; required only for `download_sales_report` / `download_finance_report`.                                                                                                                                                            |
+| `ASC_ALLOW_WRITES`     | no       | Set to `true` or `1` to register all write tools (see the tool catalog). Off by default.                                                                                                                                                         |
+| `ASC_UPLOAD_DIR`       | no       | Directory `upload_app_screenshots` may read from. Required for uploads; only `.png`/`.jpg`/`.jpeg` files inside it (after resolving symlinks, max 30 MB each) are accepted.                                                                      |
+| `ASC_DOWNLOAD_DIR`     | no       | Directory `download_profile` may write `.mobileprovision` files to. Required to save a profile to disk (`return_base64` works without it); only relative paths inside it ending in `.mobileprovision` are accepted, symlinks are never followed. |
 
 \* Provide **either** `ASC_PRIVATE_KEY_PATH` **or** `ASC_PRIVATE_KEY`.
 
@@ -71,8 +74,9 @@ may be escaped as `\n`). The key is read locally and used only to sign short-liv
 
 By default the server registers only read tools. Tester feedback, crash logs and customer reviews are
 text written by strangers, and an agent that reads them next to write tools could be talked into
-editing your listing by a crafted comment. Only set `ASC_ALLOW_WRITES` when you want the agent to edit
-the listing, ideally in a separate MCP server entry that you enable for that task:
+changing your account by a crafted comment. Only set `ASC_ALLOW_WRITES` when you want the agent to
+change something (edit the listing, set up signing, manage TestFlight, submit a release), ideally in a
+separate MCP server entry that you enable for that task:
 
 ```json
 {
@@ -85,7 +89,8 @@ the listing, ideally in a separate MCP server entry that you enable for that tas
         "ASC_ISSUER_ID": "12a3b456-7890-1234-5678-9abcdef01234",
         "ASC_PRIVATE_KEY_PATH": "/path/to/AuthKey_ABCD123456.p8",
         "ASC_ALLOW_WRITES": "true",
-        "ASC_UPLOAD_DIR": "/path/to/screenshots"
+        "ASC_UPLOAD_DIR": "/path/to/screenshots",
+        "ASC_DOWNLOAD_DIR": "/path/to/profiles"
       }
     }
   }
@@ -133,11 +138,17 @@ Once connected, ask the agent things like:
 - "The last Xcode Cloud build failed — what were the errors?"
 - "Pull this month's sales summary as CSV."
 
+With writes enabled:
+
+- "Look at the App ID for com.acme.app: which capabilities are on, and is the iCloud entitlement in its profile?"
+- "Enable push notifications on com.acme.app, then create an App Store profile named 'Acme App Store' with my distribution certificate and save it to my profiles folder."
+- "Create an external beta group 'Friends', add these testers and the latest build, and submit the build for beta review."
+- "Create version 1.0.0, attach build 12, set release after approval and submit it to App Review."
+
 ## Tools
 
-Start from `list_apps` to get an `app_id`, then drill into feedback. All tools are read-only except the
-`update_*` listing tools and `upload_app_screenshots`, which are only registered when
-`ASC_ALLOW_WRITES` is set.
+Start from `list_apps` to get an `app_id`, then drill into feedback. Tools marked **Writes** are only
+registered when `ASC_ALLOW_WRITES` is set; everything else is read-only.
 
 **TestFlight feedback**
 
@@ -161,21 +172,31 @@ Start from `list_apps` to get an `app_id`, then drill into feedback. All tools a
 
 **TestFlight build status & metrics**
 
-| Tool                          | Description                                                                                                                 |
-| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `get_build_status`            | Why a build is (not) available to testers: internal/external build state, beta review state, and "What to Test" per locale. |
-| `get_build_usage_metrics`     | Installs, sessions, crashes, invites and feedback counts for a build.                                                       |
-| `get_beta_tester_metrics`     | Tester engagement (sessions, crashes, feedback) per tester, for an app or a beta group.                                     |
-| `list_beta_app_localizations` | Tester-facing TestFlight metadata (beta description, feedback email, privacy URL).                                          |
-| `get_beta_app_review_detail`  | Beta App Review contact, demo-account requirement and review notes.                                                         |
+| Tool                           | Description                                                                                                                 |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `get_build_status`             | Why a build is (not) available to testers: internal/external build state, beta review state, and "What to Test" per locale. |
+| `get_build_usage_metrics`      | Installs, sessions, crashes, invites and feedback counts for a build.                                                       |
+| `get_beta_tester_metrics`      | Tester engagement (sessions, crashes, feedback) per tester, for an app or a beta group.                                     |
+| `list_beta_app_localizations`  | Tester-facing TestFlight metadata (beta description, feedback email, privacy URL).                                          |
+| `get_beta_app_review_detail`   | Beta App Review contact, demo-account requirement and review notes.                                                         |
+| `set_build_export_compliance`  | **Writes.** Answer the export compliance question (`usesNonExemptEncryption`) for a build.                                  |
+| `set_build_whats_new`          | **Writes.** Set a build's "What to Test" text for a locale (creates the locale if missing).                                 |
+| `submit_build_for_beta_review` | **Writes.** Submit a build for beta app review (needed for external groups).                                                |
 
 **Beta testers & groups**
 
-| Tool                 | Description                                                                |
-| -------------------- | -------------------------------------------------------------------------- |
-| `list_beta_groups`   | Beta groups for an app (internal/external, public link, feedback enabled). |
-| `list_beta_testers`  | Beta testers (name, email, invite type, state). Filter by app/group/email. |
-| `list_group_testers` | Testers in a specific beta group.                                          |
+| Tool                             | Description                                                                  |
+| -------------------------------- | ---------------------------------------------------------------------------- |
+| `list_beta_groups`               | Beta groups for an app (internal/external, public link, feedback enabled).   |
+| `list_beta_testers`              | Beta testers (name, email, invite type, state). Filter by app/group/email.   |
+| `list_group_testers`             | Testers in a specific beta group.                                            |
+| `create_beta_group`              | **Writes.** Create an internal or external beta group.                       |
+| `delete_beta_group`              | **Writes, destructive.** Delete a beta group.                                |
+| `add_beta_tester`                | **Writes.** Create a tester by email in groups (Apple emails an invitation). |
+| `add_testers_to_beta_group`      | **Writes.** Add existing testers to a group.                                 |
+| `remove_testers_from_beta_group` | **Writes, destructive.** Remove testers from a group.                        |
+| `add_builds_to_beta_group`       | **Writes.** Make builds available to a group.                                |
+| `remove_builds_from_beta_group`  | **Writes, destructive.** Remove builds from a group.                         |
 
 **Analytics & reports**
 
@@ -190,12 +211,42 @@ Start from `list_apps` to get an `app_id`, then drill into feedback. All tools a
 
 **Provisioning & devices**
 
-| Tool                | Description                                         |
-| ------------------- | --------------------------------------------------- |
-| `list_devices`      | Registered devices (name, platform, UDID, status).  |
-| `list_certificates` | Signing certificates (type, name, serial, expiry).  |
-| `list_profiles`     | Provisioning profiles with their bundle ID.         |
-| `list_bundle_ids`   | Registered bundle IDs (identifier, name, platform). |
+Everything needed to set up signing for a new app without a Mac: register the bundle ID, enable
+capabilities, pick a distribution certificate, create and verify an App Store profile and export it.
+
+| Tool                 | Description                                                                                                                                                                                                                                    |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_devices`       | Registered devices (name, platform, UDID, status).                                                                                                                                                                                             |
+| `list_certificates`  | Signing certificates with `certificateType`, name, serial, expiry and `activated`; filter by type.                                                                                                                                             |
+| `get_certificate`    | One certificate; optionally with its base64 DER content.                                                                                                                                                                                       |
+| `list_profiles`      | Provisioning profiles with type, state, expiry and bundle ID; filter by state or type.                                                                                                                                                         |
+| `get_profile`        | One profile in depth: type, state, expiry, bundle ID, its certificates and devices, plus the decoded profile content (entitlements, team, inferred type, certificate serials). Catches a Development profile where an App Store one is needed. |
+| `list_bundle_ids`    | Registered bundle IDs (id, identifier, name, platform).                                                                                                                                                                                        |
+| `get_bundle_id`      | One bundle ID (by id or exact identifier) with its enabled capabilities and settings and its profiles.                                                                                                                                         |
+| `register_bundle_id` | **Writes.** Register a bundle ID (App ID).                                                                                                                                                                                                     |
+| `update_bundle_id`   | **Writes.** Rename a bundle ID (the identifier is permanent).                                                                                                                                                                                  |
+| `delete_bundle_id`   | **Writes, destructive.** Delete a bundle ID (only possible while no App Store Connect app uses it).                                                                                                                                            |
+| `enable_capability`  | **Writes.** Enable a capability (push notifications, iCloud, associated domains, ...) with optional settings, e.g. iCloud with CloudKit.                                                                                                       |
+| `update_capability`  | **Writes.** Change the settings of an enabled capability.                                                                                                                                                                                      |
+| `disable_capability` | **Writes, destructive.** Disable a capability.                                                                                                                                                                                                 |
+| `create_certificate` | **Writes.** Create a certificate from a CSR (you keep the private key). Revoking certificates is deliberately not offered.                                                                                                                     |
+| `create_profile`     | **Writes.** Create a provisioning profile of any type the API supports (`IOS_APP_STORE` for App Store/TestFlight, `IOS_APP_DEVELOPMENT`, `IOS_APP_ADHOC`, `IOS_APP_INHOUSE`, the macOS, tvOS and Catalyst variants).                           |
+| `delete_profile`     | **Writes, destructive.** Delete a provisioning profile.                                                                                                                                                                                        |
+| `download_profile`   | **Writes to local disk.** Export a profile as a `.mobileprovision` file inside `ASC_DOWNLOAD_DIR` and/or return it base64-encoded.                                                                                                             |
+| `register_device`    | **Writes.** Register a device by UDID.                                                                                                                                                                                                         |
+| `update_device`      | **Writes.** Rename a device or enable/disable it.                                                                                                                                                                                              |
+
+**iCloud containers are not manageable through the API.** The App Store Connect API (OpenAPI spec 4.6.1,
+and the _Provisioning_ section of the
+[API documentation](https://developer.apple.com/documentation/appstoreconnectapi)) has no endpoint to
+list or create iCloud containers or to link one to a bundle ID; the same goes for app groups and
+Sign in with Apple groups. `enable_capability` with `ICLOUD` (settings
+`[{ "key": "ICLOUD_VERSION", "options": [{ "key": "XCODE_6", "enabled": true }] }]` for CloudKit) only
+switches the capability on. Create the container and associate it with the App ID in the Apple
+Developer portal (Certificates, Identifiers & Profiles > Identifiers > your App ID > iCloud >
+Configure), **then** create the profile, because a profile's entitlements are fixed when it is created
+(changing the App ID later invalidates it). Check the result with `get_profile`: a profile without a
+`com.apple.developer.icloud-container-identifiers` entitlement has no container.
 
 **App metadata & localizations**
 
@@ -225,12 +276,23 @@ Start from `list_apps` to get an `app_id`, then drill into feedback. All tools a
 | `list_app_screenshot_sets` | Screenshot sets of a localization (one per display type) with their screenshots and processing state.                                                                                      |
 | `upload_app_screenshots`   | **Writes.** Uploads PNG/JPEG files from `ASC_UPLOAD_DIR` to one display type, in order. With `replace_existing` the previous screenshots are deleted only after every new one is uploaded. |
 
-**App Review pipeline**
+**App Review pipeline & release flow**
+
+The API cannot create the app record itself; create the app once in the App Store Connect web UI. The
+release flow is then: `create_app_store_version` (or `update_app_store_version` for the release type),
+`set_app_store_version_build`, fill in the localizations, `create_review_submission`,
+`add_review_submission_item`, `submit_review_submission`.
 
 | Tool                           | Description                                                                                                |
 | ------------------------------ | ---------------------------------------------------------------------------------------------------------- |
 | `list_review_submissions`      | What is in App Review and its state, with the version under review and the submitted items.                |
 | `get_app_store_version_status` | One call for a version's release status: attached build, submission, phased release, review contact/notes. |
+| `create_app_store_version`     | **Writes.** Create an App Store version, optionally with release type and build.                           |
+| `set_app_store_version_build`  | **Writes.** Attach a build to an editable version.                                                         |
+| `create_review_submission`     | **Writes.** Start a review submission for an app and platform (nothing is sent yet).                       |
+| `add_review_submission_item`   | **Writes.** Add an App Store version to a submission.                                                      |
+| `submit_review_submission`     | **Writes, consequential.** Send the submission to App Review.                                              |
+| `cancel_review_submission`     | **Writes, destructive.** Cancel a submission that is waiting for or in review.                             |
 
 **Performance & diagnostics**
 
@@ -252,11 +314,28 @@ Start from `list_apps` to get an `app_id`, then drill into feedback. All tools a
 
 ## Notes & caveats
 
-- **Read-only unless `ASC_ALLOW_WRITES` is set.** The server cannot add/remove testers, attach builds,
-  or submit apps. With `ASC_ALLOW_WRITES`, the `update_*` listing tools (App Information, age rating,
-  version text) and `upload_app_screenshots` change App Store Connect; nothing else does.
+- **Read-only unless `ASC_ALLOW_WRITES` is set.** With it, the tools marked **Writes** change your
+  account: listing tools (`update_*`, `upload_app_screenshots`), signing and provisioning, TestFlight
+  groups/testers/builds and the App Store release flow. Every write tool carries MCP annotations
+  (`CREATE`, `OVERWRITE` or `DESTRUCTIVE`) so clients can ask before running it.
   `create_analytics_report_request` is always available: it only requests an analytics snapshot so the
   data can be read and does not change your app.
+- **Not possible through the API:** creating the app record, iCloud containers (see above), revoking
+  certificates (deliberately not offered here: do it in the developer portal), deleting devices (they can
+  only be disabled).
+- **API key role.** Managing identifiers, certificates, profiles and devices needs a key whose role has
+  access to Certificates, Identifiers & Profiles (Admin does); TestFlight and App Store tools need
+  App Manager or above. Apple does not publish a per-endpoint role table, so a `403` means the key's
+  role is too low.
+- **Profile files.** `download_profile` only writes `.mobileprovision` files inside
+  `ASC_DOWNLOAD_DIR`: the path must be relative, its directory must already exist and resolve (after
+  symlinks) to a place inside the download directory, a symlink at the target is refused, and an
+  existing file is only replaced with `overwrite` (written to a temporary file first, then renamed).
+  Without the variable only `return_base64` works. `get_profile` decodes the CMS-signed profile
+  content without verifying its signature.
+- **A profile is fixed at creation.** Entitlements come from the App ID at that moment. Enable the
+  capabilities (and link the iCloud container in the portal) first, then create the profile; changing
+  the App ID later invalidates its profiles.
 - **Feedback is untrusted input.** Tester comments, crash logs and customer reviews are written by
   third parties. The tool descriptions tell the agent not to follow instructions found in them, but
   that is a mitigation, not a guarantee, which is why writes are opt-in.

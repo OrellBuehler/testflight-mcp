@@ -3,7 +3,13 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { client, config } from "./config.js";
 import { createServer } from "./server.js";
 
-const server = createServer(client, config.vendorNumber, config.allowWrites, config.uploadDir);
+const server = createServer(
+  client,
+  config.vendorNumber,
+  config.allowWrites,
+  config.uploadDir,
+  config.downloadDir,
+);
 const transport = new StdioServerTransport();
 try {
   await server.connect(transport);

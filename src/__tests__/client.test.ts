@@ -121,6 +121,58 @@ describe("AppStoreConnectClient", () => {
     expect(options.body).toBe(JSON.stringify({ data: { type: "analyticsReportRequests" } }));
   });
 
+  it("patch sends a JSON body with the PATCH method", async () => {
+    mockFetch.mockResolvedValueOnce(mockJson({ data: { type: "bundleIds", id: "b1" } }));
+    const res = await client.patch("/bundleIds/b1", { data: { type: "bundleIds", id: "b1" } });
+    const [url, options] = mockFetch.mock.calls[0];
+    expect(new URL(url).pathname).toBe("/v1/bundleIds/b1");
+    expect(options.method).toBe("PATCH");
+    expect((options.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
+    expect(options.body).toBe(JSON.stringify({ data: { type: "bundleIds", id: "b1" } }));
+    expect(res.data).toMatchObject({ id: "b1" });
+  });
+
+  it("delete sends DELETE without a body or content type by default", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 204, statusText: "No Content" });
+    await client.delete("/profiles/p1");
+    const [url, options] = mockFetch.mock.calls[0];
+    expect(new URL(url).pathname).toBe("/v1/profiles/p1");
+    expect(options.method).toBe("DELETE");
+    expect(options.body).toBeUndefined();
+    expect((options.headers as Record<string, string>)["Content-Type"]).toBeUndefined();
+  });
+
+  it("delete can send a JSON body for relationship removals", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 204, statusText: "No Content" });
+    const body = { data: [{ type: "betaTesters", id: "t1" }] };
+    await client.delete("/betaGroups/g1/relationships/betaTesters", body);
+    const [, options] = mockFetch.mock.calls[0];
+    expect(options.method).toBe("DELETE");
+    expect(options.body).toBe(JSON.stringify(body));
+    expect((options.headers as Record<string, string>)["Content-Type"]).toBe("application/json");
+  });
+
+  it("postNoContent tolerates an empty 204 response", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 204, statusText: "No Content" });
+    const body = { data: [{ type: "builds", id: "b1" }] };
+    await expect(
+      client.postNoContent("/betaGroups/g1/relationships/builds", body),
+    ).resolves.toBeUndefined();
+    const [, options] = mockFetch.mock.calls[0];
+    expect(options.method).toBe("POST");
+    expect(options.body).toBe(JSON.stringify(body));
+  });
+
+  it("surfaces the error body when a delete fails", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 409,
+      statusText: "Conflict",
+      text: () => Promise.resolve("ENTITY_ERROR"),
+    });
+    await expect(client.delete("/bundleIds/b1")).rejects.toThrow("409 Conflict: ENTITY_ERROR");
+  });
+
   it("downloadText fetches a presigned URL without an auth header", async () => {
     mockFetch.mockResolvedValueOnce({
       ok: true,

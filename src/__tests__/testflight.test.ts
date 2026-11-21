@@ -4,15 +4,26 @@ import { registerTestFlightTools } from "../tools/testflight.js";
 
 type Handler = (args: any) => Promise<{ content: { text?: string }[]; isError?: boolean }>;
 
-function collect() {
+function collect(allowWrites = true) {
   const tools = new Map<string, Handler>();
   registerTestFlightTools(
     {
       tool: (n: string, _d: string, _s: unknown, _a: unknown, h: Handler) => tools.set(n, h),
     } as any,
     new AppStoreConnectClient(async () => "tok"),
+    allowWrites,
   );
   return tools;
+}
+
+function sent(mockFetch: ReturnType<typeof vi.fn>, index = 0) {
+  const [url, init] = mockFetch.mock.calls[index];
+  return {
+    method: init?.method ?? "GET",
+    path: new URL(url).pathname,
+    params: new URL(url).searchParams,
+    body: init?.body ? JSON.parse(init.body) : undefined,
+  };
 }
 
 function resp(body: unknown) {
@@ -205,5 +216,104 @@ describe("testflight tools", () => {
     const res = await tools.get("get_beta_tester_metrics")!({});
     expect(res.isError).toBe(true);
     expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("registers only read tools unless writes are allowed", () => {
+    expect([...collect(false).keys()]).toEqual([
+      "get_build_status",
+      "list_beta_app_localizations",
+      "get_beta_app_review_detail",
+      "get_build_usage_metrics",
+      "get_beta_tester_metrics",
+    ]);
+    expect([...collect(true).keys()].slice(5)).toEqual([
+      "set_build_export_compliance",
+      "set_build_whats_new",
+      "submit_build_for_beta_review",
+    ]);
+  });
+
+  it("set_build_export_compliance patches usesNonExemptEncryption", async () => {
+    mockFetch.mockResolvedValueOnce(resp({ data: { type: "builds", id: "b1", attributes: {} } }));
+    await tools.get("set_build_export_compliance")!({
+      build_id: "b1",
+      uses_non_exempt_encryption: false,
+    });
+    expect(sent(mockFetch)).toMatchObject({
+      method: "PATCH",
+      path: "/v1/builds/b1",
+      body: {
+        data: { type: "builds", id: "b1", attributes: { usesNonExemptEncryption: false } },
+      },
+    });
+  });
+
+  it("set_build_whats_new creates a missing locale", async () => {
+    mockFetch.mockResolvedValueOnce(resp({ data: [] }));
+    mockFetch.mockResolvedValueOnce(
+      resp({ data: { type: "betaBuildLocalizations", id: "l1", attributes: { locale: "en-US" } } }),
+    );
+    const res = await tools.get("set_build_whats_new")!({
+      build_id: "b1",
+      locale: "en-US",
+      whats_new: "Try the new flow",
+    });
+    expect(sent(mockFetch).params.get("filter[build]")).toBe("b1");
+    expect(sent(mockFetch, 1)).toMatchObject({
+      method: "POST",
+      path: "/v1/betaBuildLocalizations",
+      body: {
+        data: {
+          type: "betaBuildLocalizations",
+          attributes: { locale: "en-US", whatsNew: "Try the new flow" },
+          relationships: { build: { data: { type: "builds", id: "b1" } } },
+        },
+      },
+    });
+    expect(JSON.parse(res.content[0].text!).created).toBe(true);
+  });
+
+  it("set_build_whats_new updates an existing locale", async () => {
+    mockFetch.mockResolvedValueOnce(
+      resp({
+        data: [
+          { type: "betaBuildLocalizations", id: "l1", attributes: { locale: "de-DE" } },
+          { type: "betaBuildLocalizations", id: "l2", attributes: { locale: "en-US" } },
+        ],
+      }),
+    );
+    mockFetch.mockResolvedValueOnce(
+      resp({ data: { type: "betaBuildLocalizations", id: "l2", attributes: { locale: "en-US" } } }),
+    );
+    const res = await tools.get("set_build_whats_new")!({
+      build_id: "b1",
+      locale: "en-US",
+      whats_new: "New text",
+    });
+    expect(sent(mockFetch, 1)).toMatchObject({
+      method: "PATCH",
+      path: "/v1/betaBuildLocalizations/l2",
+      body: {
+        data: { type: "betaBuildLocalizations", id: "l2", attributes: { whatsNew: "New text" } },
+      },
+    });
+    expect(JSON.parse(res.content[0].text!).created).toBe(false);
+  });
+
+  it("submit_build_for_beta_review creates a beta app review submission", async () => {
+    mockFetch.mockResolvedValueOnce(
+      resp({ data: { type: "betaAppReviewSubmissions", id: "s1", attributes: {} } }),
+    );
+    await tools.get("submit_build_for_beta_review")!({ build_id: "b1" });
+    expect(sent(mockFetch)).toMatchObject({
+      method: "POST",
+      path: "/v1/betaAppReviewSubmissions",
+      body: {
+        data: {
+          type: "betaAppReviewSubmissions",
+          relationships: { build: { data: { type: "builds", id: "b1" } } },
+        },
+      },
+    });
   });
 });
