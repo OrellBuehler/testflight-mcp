@@ -64,6 +64,18 @@ describe("config", () => {
     expect(config.uploadDir).toBe("/srv/screenshots");
   });
 
+  it("reads ASC_DOWNLOAD_DIR", async () => {
+    vi.stubEnv("ASC_KEY_ID", "KEY123");
+    vi.stubEnv("ASC_ISSUER_ID", "ISSUER-1");
+    vi.stubEnv("ASC_PRIVATE_KEY_PATH", "/tmp/AuthKey.p8");
+    vi.stubEnv("ASC_DOWNLOAD_DIR", " /srv/profiles ");
+    const { config } = await import("../config.js");
+    expect(config.downloadDir).toBe("/srv/profiles");
+    vi.resetModules();
+    vi.stubEnv("ASC_DOWNLOAD_DIR", "");
+    expect((await import("../config.js")).config.downloadDir).toBeUndefined();
+  });
+
   it("exits when required env vars are missing", async () => {
     vi.stubEnv("ASC_KEY_ID", "");
     vi.stubEnv("ASC_ISSUER_ID", "");

@@ -8,6 +8,7 @@ const privateKeyPath = (process.env.ASC_PRIVATE_KEY_PATH || "").trim() || undefi
 const vendorNumber = (process.env.ASC_VENDOR_NUMBER || "").trim() || undefined;
 const allowWrites = /^(1|true)$/i.test((process.env.ASC_ALLOW_WRITES || "").trim());
 const uploadDir = (process.env.ASC_UPLOAD_DIR || "").trim() || undefined;
+const downloadDir = (process.env.ASC_DOWNLOAD_DIR || "").trim() || undefined;
 
 if (!keyId || !issuerId || (!privateKey && !privateKeyPath)) {
   console.error(
@@ -23,6 +24,7 @@ export const config = {
   vendorNumber,
   allowWrites,
   uploadDir,
+  downloadDir,
   transport: "stdio" as const,
 };
 

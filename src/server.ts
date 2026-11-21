@@ -20,6 +20,7 @@ export function createServer(
   vendorNumber?: string,
   allowWrites = false,
   uploadDir?: string,
+  downloadDir?: string,
 ): McpServer {
   const server = new McpServer({ name: "testflight-mcp", version });
   registerFeedbackTools(server, client);
@@ -27,7 +28,7 @@ export function createServer(
   registerTestFlightTools(server, client);
   registerTesterTools(server, client);
   registerAnalyticsTools(server, client, vendorNumber);
-  registerProvisioningTools(server, client);
+  registerProvisioningTools(server, client, allowWrites, downloadDir);
   registerMetadataTools(server, client);
   registerDiagnosticsTools(server, client);
   registerCiTools(server, client);
