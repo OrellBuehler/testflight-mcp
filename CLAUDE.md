@@ -71,13 +71,13 @@ vendorNumber, allowWrites, uploadDir, downloadDir)`, and connects it over stdio.
   calls: `feedback`, `apps`, `testflight` (build beta state, "What to Test", TestFlight usage
   metrics), `testers`, `analytics` (also takes the default vendor number), `provisioning`,
   `metadata` (App Store versions + review pipeline), `diagnostics` (perf/power metrics, diagnostic
-  signatures and logs), `ci` (Xcode Cloud), `screenshots` (App Store screenshot sets + upload), `listing` (App Information, age rating,
+  signatures and logs), `ci` (Xcode Cloud), `screenshots` (App Store screenshot sets + upload), `assets` (asset library placements: product page header and search results asset, list + upload), `listing` (App Information, age rating,
   version text — writes), `release` (App Store version create/build attach, review submissions, phased release,
   release request — writes only), `reviews` (customer review responses — writes only), `uploads`
   (build uploads: list/get and `upload_build`), `notary` (macOS notarization through the Notary API on
-  `appstoreconnect.apple.com/notary/v2`, same JWT). `listing`, `screenshots`, `release`, `reviews`, `uploads`, `notary`, `testers`,
+  `appstoreconnect.apple.com/notary/v2`, same JWT). `listing`, `screenshots`, `assets`, `release`, `reviews`, `uploads`, `notary`, `testers`,
   `testflight` and `provisioning` take `allowWrites` (third argument; `provisioning` is
-  `(server, client, allowWrites, downloadDir)` and `screenshots`, `uploads` and `notary` are
+  `(server, client, allowWrites, downloadDir)` and `screenshots`, `assets`, `uploads` and `notary` are
   `(…, allowWrites, uploadDir)`). `provisioning` holds bundle IDs, capabilities,
   certificates, profiles and devices (reads and writes); `testers` the beta group/tester writes;
   `testflight` the build writes (export compliance, What to Test, beta review) and the Test
@@ -101,7 +101,7 @@ try { return ok(...); } catch (e) { return err(e); } })`. The third argument is 
 - **Stranger-written text is untrusted.** Tools that return tester comments, crash logs or customer
   reviews append `UNTRUSTED_NOTE` to their description. Do the same for any new tool that returns
   text written by third parties.
-- **Uploads only read from `ASC_UPLOAD_DIR`.** `upload_app_screenshots`, `upload_build` and
+- **Uploads only read from `ASC_UPLOAD_DIR`.** `upload_app_screenshots`, `upload_app_store_asset`, `upload_build` and
   `submit_for_notarization` go through `resolveUploadFile` (`asc/files.ts`): real paths, nothing
   outside that directory, only the tool's own extensions and size limit, plus a magic-number check in
   the tool, all before the first API call. `upload_build` deletes its upload record when the transfer
@@ -138,8 +138,8 @@ try { return ok(...); } catch (e) { return err(e); } })`. The third argument is 
 - **Secrets:** the repo is public. Never log the `.p8` key or tokens; only read them from env. Tests
   use a locally generated throwaway EC key. Review-detail endpoints expose a `demoAccountPassword`
   field — it is deliberately left out of every `fields[...]` list; don't add it back.
-  `update_beta_app_review_detail` takes it as write-only input and deletes it from the response
-  before returning.
+  `update_beta_app_review_detail` and `update_app_store_review_detail` take it as write-only input
+  and delete it from the response before returning.
 
 ## Tests
 
@@ -151,7 +151,7 @@ covers pagination, gzip and error handling; `jwt.test.ts` signs with a generated
 asserts header/claims/caching; `config.ts` reads env at import time and exits if it's missing, so
 `config.test.ts` `vi.stubEnv(...)` then dynamically `import()`s it.
 
-Gated modules (`listing`, `screenshots`, `release`, `reviews`, and the write halves of `provisioning`,
+Gated modules (`listing`, `screenshots`, `assets`, `release`, `reviews`, and the write halves of `provisioning`,
 `testers`, `testflight`, `uploads` and `notary`) take `allowWrites` in the test `collect()` helper and assert
 the **exact list of registered tool names** when it is false, so a new write tool added above the
 gate fails the test. `server.test.ts` connects a real MCP client over an in-memory transport and

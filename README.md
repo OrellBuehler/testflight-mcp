@@ -58,16 +58,16 @@ may be escaped as `\n`). The key is read locally and used only to sign short-liv
 
 ## Configuration
 
-| Variable               | Required | Description                                                                                                                                                                                                                                                                                          |
-| ---------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ASC_KEY_ID`           | yes      | App Store Connect API **Key ID**.                                                                                                                                                                                                                                                                    |
-| `ASC_ISSUER_ID`        | yes      | App Store Connect API **Issuer ID** (per team).                                                                                                                                                                                                                                                      |
-| `ASC_PRIVATE_KEY_PATH` | yes\*    | Path to the downloaded `.p8` private key file.                                                                                                                                                                                                                                                       |
-| `ASC_PRIVATE_KEY`      | yes\*    | The `.p8` contents inline (alternative to the path; `\n` escapes are unescaped).                                                                                                                                                                                                                     |
-| `ASC_VENDOR_NUMBER`    | no       | Vendor number; required only for `download_sales_report` / `download_finance_report`.                                                                                                                                                                                                                |
-| `ASC_ALLOW_WRITES`     | no       | Set to `true` or `1` to register all write tools (see the tool catalog). Off by default.                                                                                                                                                                                                             |
-| `ASC_UPLOAD_DIR`       | no       | Directory the upload tools may read from; required for them. After resolving symlinks only files inside it are accepted: `.png`/`.jpg`/`.jpeg` (max 30 MB) for `upload_app_screenshots`, `.ipa`/`.pkg` (max 4 GB) for `upload_build`, `.zip`/`.dmg`/`.pkg` (max 5 GB) for `submit_for_notarization`. |
-| `ASC_DOWNLOAD_DIR`     | no       | Directory `download_profile` may write `.mobileprovision` files to. Required to save a profile to disk (`return_base64` works without it); only relative paths inside it ending in `.mobileprovision` are accepted, symlinks are never followed.                                                     |
+| Variable               | Required | Description                                                                                                                                                                                                                                                                                                                                   |
+| ---------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ASC_KEY_ID`           | yes      | App Store Connect API **Key ID**.                                                                                                                                                                                                                                                                                                             |
+| `ASC_ISSUER_ID`        | yes      | App Store Connect API **Issuer ID** (per team).                                                                                                                                                                                                                                                                                               |
+| `ASC_PRIVATE_KEY_PATH` | yes\*    | Path to the downloaded `.p8` private key file.                                                                                                                                                                                                                                                                                                |
+| `ASC_PRIVATE_KEY`      | yes\*    | The `.p8` contents inline (alternative to the path; `\n` escapes are unescaped).                                                                                                                                                                                                                                                              |
+| `ASC_VENDOR_NUMBER`    | no       | Vendor number; required only for `download_sales_report` / `download_finance_report`.                                                                                                                                                                                                                                                         |
+| `ASC_ALLOW_WRITES`     | no       | Set to `true` or `1` to register all write tools (see the tool catalog). Off by default.                                                                                                                                                                                                                                                      |
+| `ASC_UPLOAD_DIR`       | no       | Directory the upload tools may read from; required for them. After resolving symlinks only files inside it are accepted: `.png`/`.jpg`/`.jpeg` for `upload_app_screenshots` (max 30 MB) and `upload_app_store_asset` (max 50 MB), `.ipa`/`.pkg` (max 4 GB) for `upload_build`, `.zip`/`.dmg`/`.pkg` (max 5 GB) for `submit_for_notarization`. |
+| `ASC_DOWNLOAD_DIR`     | no       | Directory `download_profile` may write `.mobileprovision` files to. Required to save a profile to disk (`return_base64` works without it); only relative paths inside it ending in `.mobileprovision` are accepted, symlinks are never followed.                                                                                              |
 
 \* Provide **either** `ASC_PRIVATE_KEY_PATH` **or** `ASC_PRIVATE_KEY`.
 
@@ -289,12 +289,16 @@ Configure), **then** create the profile, because a profile's entitlements are fi
 | `update_app_store_version`              | **Writes.** Version string, copyright, release type.                                                           |
 | `update_app_store_version_localization` | **Writes.** Description, keywords, promotional text, what's new, URLs (creates the locale if missing).         |
 
-**App Store screenshots** (`upload_app_screenshots` needs `ASC_ALLOW_WRITES` and `ASC_UPLOAD_DIR`)
+**App Store screenshots and header assets** (`upload_app_screenshots` and `upload_app_store_asset` need `ASC_ALLOW_WRITES` and `ASC_UPLOAD_DIR`)
 
-| Tool                       | Description                                                                                                                                                                                |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `list_app_screenshot_sets` | Screenshot sets of a localization (one per display type) with their screenshots and processing state.                                                                                      |
-| `upload_app_screenshots`   | **Writes.** Uploads PNG/JPEG files from `ASC_UPLOAD_DIR` to one display type, in order. With `replace_existing` the previous screenshots are deleted only after every new one is uploaded. |
+| Tool                               | Description                                                                                                                                                                                                      |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_app_screenshot_sets`         | Screenshot sets of a localization (one per display type) with their screenshots and processing state.                                                                                                            |
+| `upload_app_screenshots`           | **Writes.** Uploads PNG/JPEG files from `ASC_UPLOAD_DIR` to one display type, in order. With `replace_existing` the previous screenshots are deleted only after every new one is uploaded.                       |
+| `list_app_store_asset_placements`  | Asset library placements of a localization, such as the product page header and the search results asset ("Header and Search Results" tab), with state and image.                                                |
+| `get_app_asset_library_specs`      | Apple's reference data for those assets: accepted dimensions, file types, sizes and placement groups.                                                                                                            |
+| `upload_app_store_asset`           | **Writes.** Uploads a PNG/JPEG from `ASC_UPLOAD_DIR` as the product page header or search results asset of a localization. With `replace_existing` the previous placement is removed once the new one is placed. |
+| `delete_app_store_asset_placement` | **Writes, destructive.** Removes a placement from its localization; the image stays in the asset library.                                                                                                        |
 
 **App Review pipeline & release flow**
 
@@ -305,20 +309,21 @@ release flow is then: `create_app_store_version` (or `update_app_store_version` 
 `create_phased_release` before the version goes live; a version with manual release is published with
 `release_app_store_version` once it is approved.
 
-| Tool                           | Description                                                                                                |
-| ------------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| `list_review_submissions`      | What is in App Review and its state, with the version under review and the submitted items.                |
-| `get_app_store_version_status` | One call for a version's release status: attached build, submission, phased release, review contact/notes. |
-| `create_app_store_version`     | **Writes.** Create an App Store version, optionally with release type and build.                           |
-| `set_app_store_version_build`  | **Writes.** Attach a build to an editable version.                                                         |
-| `create_review_submission`     | **Writes.** Start a review submission for an app and platform (nothing is sent yet).                       |
-| `add_review_submission_item`   | **Writes.** Add an App Store version to a submission.                                                      |
-| `submit_review_submission`     | **Writes, consequential.** Send the submission to App Review.                                              |
-| `cancel_review_submission`     | **Writes, destructive.** Cancel a submission that is waiting for or in review.                             |
-| `create_phased_release`        | **Writes.** Turn on the 7-day phased release for a version that is not released yet.                       |
-| `update_phased_release`        | **Writes, consequential.** Pause or resume a phased release, or release to all users at once.              |
-| `delete_phased_release`        | **Writes, destructive.** Turn phased release off again before the rollout started.                         |
-| `release_app_store_version`    | **Writes, consequential.** Release an approved version that is pending developer release.                  |
+| Tool                             | Description                                                                                                                                          |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_review_submissions`        | What is in App Review and its state, with the version under review and the submitted items.                                                          |
+| `get_app_store_version_status`   | One call for a version's release status: attached build, submission, phased release, review contact/notes.                                           |
+| `create_app_store_version`       | **Writes.** Create an App Store version, optionally with release type and build.                                                                     |
+| `set_app_store_version_build`    | **Writes.** Attach a build to an editable version.                                                                                                   |
+| `update_app_store_review_detail` | **Writes.** Set the App Review notes, contact and demo account of a version (creates the review detail if missing; the demo password is write-only). |
+| `create_review_submission`       | **Writes.** Start a review submission for an app and platform (nothing is sent yet).                                                                 |
+| `add_review_submission_item`     | **Writes.** Add an App Store version to a submission.                                                                                                |
+| `submit_review_submission`       | **Writes, consequential.** Send the submission to App Review.                                                                                        |
+| `cancel_review_submission`       | **Writes, destructive.** Cancel a submission that is waiting for or in review.                                                                       |
+| `create_phased_release`          | **Writes.** Turn on the 7-day phased release for a version that is not released yet.                                                                 |
+| `update_phased_release`          | **Writes, consequential.** Pause or resume a phased release, or release to all users at once.                                                        |
+| `delete_phased_release`          | **Writes, destructive.** Turn phased release off again before the rollout started.                                                                   |
+| `release_app_store_version`      | **Writes, consequential.** Release an approved version that is pending developer release.                                                            |
 
 **macOS notarization** (`submit_for_notarization` needs `ASC_ALLOW_WRITES` and `ASC_UPLOAD_DIR`)
 
@@ -385,6 +390,10 @@ Apple's [Notary API](https://developer.apple.com/documentation/notaryapi) with t
   you pass `delete_first`, which deletes just enough previous screenshots up front (those are lost if
   an upload then fails). Apple processes uploads asynchronously, so a screenshot can still fail
   processing after the previous ones were deleted; check with `list_app_screenshot_sets`.
+- **Header and search results assets** (`upload_app_store_asset`) follow the same `ASC_UPLOAD_DIR`
+  rule (PNG/JPEG, max 50 MB) and go through Apple's asset library: the image is added to the app's
+  library and then placed on the localization. Apple validates the dimensions; they are listed by
+  `get_app_asset_library_specs`.
 - **Build uploads** only read `.ipa`/`.pkg` files inside `ASC_UPLOAD_DIR` (symlinks resolved first,
   max 4 GB). `upload_build` needs the version and build number of the binary because it does not open
   the archive; they must match its `Info.plist`. Only the binary itself is sent, without the analysis
@@ -414,7 +423,8 @@ Apple's [Notary API](https://developer.apple.com/documentation/notaryapi) with t
   analytics, is iOS-only, and is empty for apps with too little usage to anonymize.
 - **Demo account passwords** are never requested: `get_beta_app_review_detail` and
   `get_app_store_version_status` deliberately omit the `demoAccountPassword` field.
-  `update_beta_app_review_detail` accepts one as input and strips it from its result.
+  `update_beta_app_review_detail` and `update_app_store_review_detail` accept one as input and strip
+  it from their result.
 - **Your data goes to the agent/LLM.** Feedback includes tester names, emails and device details. Use
   an API key scoped to the access you actually want.
 

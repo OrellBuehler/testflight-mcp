@@ -11,6 +11,7 @@ import { registerTestFlightTools } from "./tools/testflight.js";
 import { registerDiagnosticsTools } from "./tools/diagnostics.js";
 import { registerCiTools } from "./tools/ci.js";
 import { registerScreenshotTools } from "./tools/screenshots.js";
+import { registerAssetTools } from "./tools/assets.js";
 import { registerListingTools } from "./tools/listing.js";
 import { registerReleaseTools } from "./tools/release.js";
 import { registerReviewTools } from "./tools/reviews.js";
@@ -37,6 +38,7 @@ export function createServer(
   registerDiagnosticsTools(server, client);
   registerCiTools(server, client);
   registerScreenshotTools(server, client, allowWrites, uploadDir);
+  registerAssetTools(server, client, allowWrites, uploadDir);
   registerListingTools(server, client, allowWrites);
   registerReleaseTools(server, client, allowWrites);
   registerReviewTools(server, client, allowWrites);

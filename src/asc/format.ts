@@ -62,3 +62,7 @@ export function shapeResource(
   }
   return out;
 }
+
+export function defined(values: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(values).filter(([, v]) => v !== undefined));
+}
