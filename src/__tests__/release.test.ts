@@ -49,6 +49,7 @@ describe("release tools", () => {
     expect([...collect(true).keys()]).toEqual([
       "create_app_store_version",
       "set_app_store_version_build",
+      "update_app_store_review_detail",
       "create_review_submission",
       "add_review_submission_item",
       "submit_review_submission",
@@ -58,6 +59,95 @@ describe("release tools", () => {
       "delete_phased_release",
       "release_app_store_version",
     ]);
+  });
+
+  it("update_app_store_review_detail patches an existing detail and hides the password", async () => {
+    mockFetch.mockResolvedValueOnce(
+      resp({ data: { type: "appStoreReviewDetails", id: "d1", attributes: {} } }),
+    );
+    mockFetch.mockResolvedValueOnce(
+      resp({
+        data: {
+          type: "appStoreReviewDetails",
+          id: "d1",
+          attributes: { notes: "Hi", demoAccountPassword: "hunter2" },
+        },
+      }),
+    );
+    const res = await tools.get("update_app_store_review_detail")!({
+      version_id: "v1",
+      notes: "Hi",
+      demo_account_password: "hunter2",
+      contact_phone: null,
+    });
+    const [lookupUrl] = mockFetch.mock.calls[0];
+    expect(new URL(lookupUrl).pathname).toBe("/v1/appStoreVersions/v1/appStoreReviewDetail");
+    expect(new URL(lookupUrl).searchParams.get("fields[appStoreReviewDetails]")).not.toContain(
+      "demoAccountPassword",
+    );
+    const patch = sent(mockFetch, 1);
+    expect(patch.method).toBe("PATCH");
+    expect(patch.path).toBe("/v1/appStoreReviewDetails/d1");
+    expect(patch.body).toEqual({
+      data: {
+        type: "appStoreReviewDetails",
+        id: "d1",
+        attributes: { notes: "Hi", demoAccountPassword: "hunter2", contactPhone: null },
+      },
+    });
+    expect(res.content[0].text).not.toContain("hunter2");
+    expect(JSON.parse(res.content[0].text!)).toEqual({
+      created: false,
+      type: "appStoreReviewDetails",
+      id: "d1",
+      notes: "Hi",
+    });
+  });
+
+  it("update_app_store_review_detail creates the detail when the version has none", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      statusText: "Not Found",
+      text: () => Promise.resolve("{}"),
+    });
+    mockFetch.mockResolvedValueOnce(
+      resp({ data: { type: "appStoreReviewDetails", id: "d2", attributes: { notes: "Hi" } } }),
+    );
+    const res = await tools.get("update_app_store_review_detail")!({
+      version_id: "v1",
+      notes: "Hi",
+    });
+    const post = sent(mockFetch, 1);
+    expect(post.method).toBe("POST");
+    expect(post.path).toBe("/v1/appStoreReviewDetails");
+    expect(post.body).toEqual({
+      data: {
+        type: "appStoreReviewDetails",
+        attributes: { notes: "Hi" },
+        relationships: { appStoreVersion: { data: { type: "appStoreVersions", id: "v1" } } },
+      },
+    });
+    expect(JSON.parse(res.content[0].text!).created).toBe(true);
+  });
+
+  it("update_app_store_review_detail needs a field and passes other errors on", async () => {
+    const empty = await tools.get("update_app_store_review_detail")!({ version_id: "v1" });
+    expect(empty.isError).toBe(true);
+    expect(mockFetch).not.toHaveBeenCalled();
+
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      statusText: "Forbidden",
+      text: () => Promise.resolve("{}"),
+    });
+    const res = await tools.get("update_app_store_review_detail")!({
+      version_id: "v1",
+      notes: "x",
+    });
+    expect(res.isError).toBe(true);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   it("create_app_store_version posts the version with its app and optional build", async () => {

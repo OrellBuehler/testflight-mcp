@@ -1,9 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AppStoreConnectClient, JsonApiResource } from "../asc/client.js";
-import { ok, err, flattenResource } from "../asc/format.js";
+import { ok, err, flattenResource, defined } from "../asc/format.js";
 import { CREATE, DESTRUCTIVE, OVERWRITE } from "./shared.js";
 
+const REVIEW_DETAIL_FIELDS =
+  "contactFirstName,contactLastName,contactPhone,contactEmail,demoAccountName,demoAccountRequired,notes";
 const PLATFORM = z.enum(["IOS", "MAC_OS", "TV_OS", "VISION_OS"]);
 
 export function registerReleaseTools(
@@ -78,6 +80,77 @@ export function registerReleaseTools(
           },
         });
         return ok(flattenResource(res.data as JsonApiResource));
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
+
+  server.tool(
+    "update_app_store_review_detail",
+    "Writes. Set the App Review information of an App Store version: the review notes, the review contact and the demo account that App Review uses. Creates the review detail if the version has none yet, otherwise changes only the fields you pass; pass null to clear one. The demo account password is write-only: it is sent to Apple but never returned by this or any other tool. Nothing is submitted for review. Read the current values with get_app_store_version_status. Version ids come from list_app_store_versions.",
+    {
+      version_id: z.string().describe("App Store version ID (from list_app_store_versions)"),
+      notes: z.string().max(4000).nullable().optional().describe("Notes for App Review"),
+      contact_first_name: z.string().nullable().optional().describe("Review contact first name"),
+      contact_last_name: z.string().nullable().optional().describe("Review contact last name"),
+      contact_phone: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("Review contact phone number with country code, e.g. '+41 44 123 45 67'"),
+      contact_email: z.string().nullable().optional().describe("Review contact email"),
+      demo_account_required: z
+        .boolean()
+        .optional()
+        .describe("Whether reviewers need a demo account to sign in"),
+      demo_account_name: z.string().nullable().optional().describe("Demo account user name"),
+      demo_account_password: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("Demo account password (write-only, never returned)"),
+    },
+    OVERWRITE,
+    async (args) => {
+      try {
+        const attributes = defined({
+          notes: args.notes,
+          contactFirstName: args.contact_first_name,
+          contactLastName: args.contact_last_name,
+          contactPhone: args.contact_phone,
+          contactEmail: args.contact_email,
+          demoAccountRequired: args.demo_account_required,
+          demoAccountName: args.demo_account_name,
+          demoAccountPassword: args.demo_account_password,
+        });
+        if (Object.keys(attributes).length === 0) return err("Pass at least one field to update.");
+        let existing: JsonApiResource | null = null;
+        try {
+          const found = await client.get(
+            `/appStoreVersions/${encodeURIComponent(args.version_id)}/appStoreReviewDetail`,
+            { "fields[appStoreReviewDetails]": REVIEW_DETAIL_FIELDS },
+          );
+          existing = (found.data as JsonApiResource | null) ?? null;
+        } catch (e) {
+          if (!/^Error: 404\b/.test(String(e))) throw e;
+        }
+        const res = existing
+          ? await client.patch(`/appStoreReviewDetails/${encodeURIComponent(existing.id)}`, {
+              data: { type: "appStoreReviewDetails", id: existing.id, attributes },
+            })
+          : await client.post("/appStoreReviewDetails", {
+              data: {
+                type: "appStoreReviewDetails",
+                attributes,
+                relationships: {
+                  appStoreVersion: { data: { type: "appStoreVersions", id: args.version_id } },
+                },
+              },
+            });
+        const flat = { ...flattenResource(res.data as JsonApiResource) };
+        delete flat.demoAccountPassword;
+        return ok({ created: !existing, ...flat });
       } catch (e) {
         return err(e);
       }

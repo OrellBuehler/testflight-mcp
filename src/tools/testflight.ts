@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AppStoreConnectClient, JsonApiResource, QueryParams } from "../asc/client.js";
-import { ok, err, flattenResource } from "../asc/format.js";
+import { ok, err, flattenResource, defined } from "../asc/format.js";
 import { CREATE, DESTRUCTIVE, OVERWRITE, READ_ONLY } from "./shared.js";
 
 const BUILD_BETA_DETAIL_FIELDS = "autoNotifyEnabled,internalBuildState,externalBuildState";
@@ -12,10 +12,6 @@ const BETA_APP_LOCALIZATION_FIELDS =
 const BETA_APP_REVIEW_DETAIL_FIELDS =
   "contactFirstName,contactLastName,contactPhone,contactEmail,demoAccountName,demoAccountRequired,notes";
 const PERIOD = z.enum(["P7D", "P30D", "P90D", "P365D"]);
-
-function defined(values: Record<string, unknown>) {
-  return Object.fromEntries(Object.entries(values).filter(([, v]) => v !== undefined));
-}
 
 function withoutPassword(resource: JsonApiResource) {
   const flat = { ...flattenResource(resource) } as Record<string, unknown>;

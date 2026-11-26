@@ -5,19 +5,19 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AppStoreConnectClient, JsonApiResource } from "../asc/client.js";
 import { ok, err, flattenResource, manyRefs, findIncluded } from "../asc/format.js";
-import { resolveUploadFile } from "../asc/files.js";
+import { resolveUploadFile, type UploadRule } from "../asc/files.js";
 import { DESTRUCTIVE, READ_ONLY } from "./shared.js";
 
 const SCREENSHOT_FIELDS = "fileName,fileSize,assetDeliveryState,sourceFileChecksum";
 const MAX_SET_SIZE = 10;
 const MAX_FILE_BYTES = 30 * 1024 * 1024;
-const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg"];
+export const IMAGE_EXTENSIONS = [".png", ".jpg", ".jpeg"];
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff]);
 
 type ScreenshotSet = Record<string, unknown> & { screenshots: (Record<string, unknown> | null)[] };
 
-type UploadOperation = {
+export type UploadOperation = {
   method: string;
   url: string;
   length: number;
@@ -54,13 +54,13 @@ const UPLOAD_RULE = {
   maxBytes: MAX_FILE_BYTES,
 };
 
-async function loadFiles(uploadDir: string | undefined, paths: string[]) {
+export async function loadImages(uploadDir: string | undefined, paths: string[], rule: UploadRule) {
   const files = [];
   for (const path of paths) {
-    const { real } = await resolveUploadFile(uploadDir, path, UPLOAD_RULE);
+    const { real } = await resolveUploadFile(uploadDir, path, rule);
     const bytes = await readFile(real);
-    if (bytes.length > MAX_FILE_BYTES) {
-      throw new Error(`${path} is larger than ${MAX_FILE_BYTES / 1024 / 1024} MB`);
+    if (bytes.length > rule.maxBytes) {
+      throw new Error(`${path} is larger than ${rule.maxBytes / 1024 / 1024} MB`);
     }
     const isImage =
       bytes.subarray(0, PNG_MAGIC.length).equals(PNG_MAGIC) ||
@@ -147,7 +147,7 @@ export function registerScreenshotTools(
     DESTRUCTIVE,
     async ({ localization_id, display_type, file_paths, replace_existing, delete_first }) => {
       try {
-        const files = await loadFiles(uploadDir, file_paths);
+        const files = await loadImages(uploadDir, file_paths, UPLOAD_RULE);
         const sets = await listSets(client, localization_id);
         let set: ScreenshotSet | undefined = sets.find(
           (s) => s?.screenshotDisplayType === display_type,

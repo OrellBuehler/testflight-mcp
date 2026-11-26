@@ -1,7 +1,15 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import type { AppStoreConnectClient, JsonApiResource } from "../asc/client.js";
-import { ok, err, flattenResource, shapeResource, manyRefs, findIncluded } from "../asc/format.js";
+import {
+  ok,
+  err,
+  flattenResource,
+  shapeResource,
+  manyRefs,
+  findIncluded,
+  defined,
+} from "../asc/format.js";
 import { OVERWRITE, READ_ONLY } from "./shared.js";
 
 const APP_FIELDS = "name,bundleId,sku,primaryLocale,contentRightsDeclaration";
@@ -11,10 +19,6 @@ const APP_INFO_LOCALIZATION_FIELDS =
   "locale,name,subtitle,privacyPolicyUrl,privacyChoicesUrl,privacyPolicyText";
 const VERSION_LOCALIZATION_FIELDS =
   "locale,description,keywords,whatsNew,promotionalText,marketingUrl,supportUrl";
-
-function defined(values: Record<string, unknown>) {
-  return Object.fromEntries(Object.entries(values).filter(([, v]) => v !== undefined));
-}
 
 function categoryRef(id: string | null | undefined) {
   if (id === undefined) return undefined;

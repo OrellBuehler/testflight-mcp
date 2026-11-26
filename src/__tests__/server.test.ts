@@ -43,6 +43,7 @@ const MANAGEMENT_WRITES = {
     "update_beta_app_review_detail",
     "set_beta_app_localization",
     "set_app_store_version_build",
+    "update_app_store_review_detail",
     "update_beta_group",
     "reply_to_customer_review",
   ],
@@ -60,6 +61,8 @@ const MANAGEMENT_WRITES = {
     "release_app_store_version",
     "expire_build",
     "delete_beta_app_localization",
+    "upload_app_store_asset",
+    "delete_app_store_asset_placement",
     "remove_beta_tester",
     "delete_customer_review_response",
   ],
@@ -74,6 +77,8 @@ const NEW_READ_TOOLS = [
   "list_notarization_submissions",
   "get_notarization_submission",
   "get_notarization_log",
+  "list_app_store_asset_placements",
+  "get_app_asset_library_specs",
 ];
 
 const UNTRUSTED_TOOLS = [
@@ -98,7 +103,7 @@ async function listTools(allowWrites?: boolean) {
 describe("server", () => {
   it("registers no write tools by default", async () => {
     const names = (await listTools()).map((t) => t.name);
-    expect(names).toHaveLength(52);
+    expect(names).toHaveLength(54);
     expect(new Set(names).size).toBe(names.length);
     expect(names.filter((n) => WRITE_TOOLS.includes(n) || MANAGEMENT_TOOLS.includes(n))).toEqual(
       [],
@@ -112,7 +117,7 @@ describe("server", () => {
 
   it("registers the write tools when writes are allowed", async () => {
     const names = (await listTools(true)).map((t) => t.name);
-    expect(names).toHaveLength(101);
+    expect(names).toHaveLength(106);
     expect(new Set(names).size).toBe(names.length);
     expect(names.filter((n) => WRITE_TOOLS.includes(n)).sort()).toEqual([...WRITE_TOOLS].sort());
     expect(names.filter((n) => MANAGEMENT_TOOLS.includes(n)).sort()).toEqual(
