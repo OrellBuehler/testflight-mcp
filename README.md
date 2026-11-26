@@ -186,17 +186,20 @@ registered when `ASC_ALLOW_WRITES` is set; everything else is read-only.
 
 **TestFlight build status & metrics**
 
-| Tool                           | Description                                                                                                                 |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| `get_build_status`             | Why a build is (not) available to testers: internal/external build state, beta review state, and "What to Test" per locale. |
-| `get_build_usage_metrics`      | Installs, sessions, crashes, invites and feedback counts for a build.                                                       |
-| `get_beta_tester_metrics`      | Tester engagement (sessions, crashes, feedback) per tester, for an app or a beta group.                                     |
-| `list_beta_app_localizations`  | Tester-facing TestFlight metadata (beta description, feedback email, privacy URL).                                          |
-| `get_beta_app_review_detail`   | Beta App Review contact, demo-account requirement and review notes.                                                         |
-| `set_build_export_compliance`  | **Writes.** Answer the export compliance question (`usesNonExemptEncryption`) for a build.                                  |
-| `set_build_whats_new`          | **Writes.** Set a build's "What to Test" text for a locale (creates the locale if missing).                                 |
-| `submit_build_for_beta_review` | **Writes.** Submit a build for beta app review (needed for external groups).                                                |
-| `expire_build`                 | **Writes, destructive.** Expire a build so it can no longer be installed or submitted (cannot be undone).                   |
+| Tool                            | Description                                                                                                                 |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `get_build_status`              | Why a build is (not) available to testers: internal/external build state, beta review state, and "What to Test" per locale. |
+| `get_build_usage_metrics`       | Installs, sessions, crashes, invites and feedback counts for a build.                                                       |
+| `get_beta_tester_metrics`       | Tester engagement (sessions, crashes, feedback) per tester, for an app or a beta group.                                     |
+| `list_beta_app_localizations`   | Tester-facing TestFlight metadata (beta description, feedback email, privacy URL).                                          |
+| `get_beta_app_review_detail`    | Beta App Review contact, demo-account requirement and review notes.                                                         |
+| `set_build_export_compliance`   | **Writes.** Answer the export compliance question (`usesNonExemptEncryption`) for a build.                                  |
+| `set_build_whats_new`           | **Writes.** Set a build's "What to Test" text for a locale (creates the locale if missing).                                 |
+| `update_beta_app_review_detail` | **Writes.** Set the beta review contact, demo account and review notes (the demo password is write-only).                   |
+| `set_beta_app_localization`     | **Writes.** Set the tester-facing description, feedback email and URLs for a locale (creates the locale if missing).        |
+| `delete_beta_app_localization`  | **Writes, destructive.** Delete one locale of the TestFlight app information.                                               |
+| `submit_build_for_beta_review`  | **Writes.** Submit a build for beta app review (needed for external groups).                                                |
+| `expire_build`                  | **Writes, destructive.** Expire a build so it can no longer be installed or submitted (cannot be undone).                   |
 
 **Beta testers & groups**
 
@@ -411,6 +414,7 @@ Apple's [Notary API](https://developer.apple.com/documentation/notaryapi) with t
   analytics, is iOS-only, and is empty for apps with too little usage to anonymize.
 - **Demo account passwords** are never requested: `get_beta_app_review_detail` and
   `get_app_store_version_status` deliberately omit the `demoAccountPassword` field.
+  `update_beta_app_review_detail` accepts one as input and strips it from its result.
 - **Your data goes to the agent/LLM.** Feedback includes tester names, emails and device details. Use
   an API key scoped to the access you actually want.
 

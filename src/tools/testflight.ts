@@ -13,6 +13,16 @@ const BETA_APP_REVIEW_DETAIL_FIELDS =
   "contactFirstName,contactLastName,contactPhone,contactEmail,demoAccountName,demoAccountRequired,notes";
 const PERIOD = z.enum(["P7D", "P30D", "P90D", "P365D"]);
 
+function defined(values: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(values).filter(([, v]) => v !== undefined));
+}
+
+function withoutPassword(resource: JsonApiResource) {
+  const flat = { ...flattenResource(resource) } as Record<string, unknown>;
+  delete flat.demoAccountPassword;
+  return flat;
+}
+
 interface MetricBody {
   data?: unknown;
   meta?: unknown;
@@ -225,8 +235,141 @@ export function registerTestFlightTools(
   );
 
   server.tool(
+    "update_beta_app_review_detail",
+    "Writes. Update the beta app review details of an app (TestFlight 'Test Information'): the review contact, the demo account and the review notes that Apple's beta review reads. They must be filled in before a build can be submitted for external testing. Only the fields you pass change; pass null to clear one. The demo account password is write-only: it is sent to Apple but never returned by this or any other tool. Read the current values with get_beta_app_review_detail. App ids come from list_apps.",
+    {
+      app_id: z.string().describe("App Store Connect app ID"),
+      contact_first_name: z.string().nullable().optional().describe("Review contact first name"),
+      contact_last_name: z.string().nullable().optional().describe("Review contact last name"),
+      contact_phone: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("Review contact phone number with country code, e.g. '+41 44 123 45 67'"),
+      contact_email: z.string().nullable().optional().describe("Review contact email"),
+      demo_account_required: z
+        .boolean()
+        .optional()
+        .describe("Whether reviewers need a demo account to sign in"),
+      demo_account_name: z.string().nullable().optional().describe("Demo account user name"),
+      demo_account_password: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("Demo account password (write-only, never returned)"),
+      notes: z.string().max(4000).nullable().optional().describe("Notes for the beta reviewer"),
+    },
+    OVERWRITE,
+    async (args) => {
+      try {
+        const attributes = defined({
+          contactFirstName: args.contact_first_name,
+          contactLastName: args.contact_last_name,
+          contactPhone: args.contact_phone,
+          contactEmail: args.contact_email,
+          demoAccountRequired: args.demo_account_required,
+          demoAccountName: args.demo_account_name,
+          demoAccountPassword: args.demo_account_password,
+          notes: args.notes,
+        });
+        if (Object.keys(attributes).length === 0) return err("Pass at least one field to update.");
+        const { data } = await client.getAll("/betaAppReviewDetails", {
+          "filter[app]": args.app_id,
+          "fields[betaAppReviewDetails]": BETA_APP_REVIEW_DETAIL_FIELDS,
+        });
+        const id = data[0]?.id ?? args.app_id;
+        const res = await client.patch(`/betaAppReviewDetails/${encodeURIComponent(id)}`, {
+          data: { type: "betaAppReviewDetails", id, attributes },
+        });
+        return ok(withoutPassword(res.data as JsonApiResource));
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
+
+  server.tool(
+    "set_beta_app_localization",
+    "Writes. Set the TestFlight app information testers see for one locale (TestFlight 'Test Information'): beta app description, feedback email, marketing URL and privacy policy URL. Creates the locale if it does not exist yet, otherwise changes only the fields you pass; pass null to clear one. External testing needs at least a description and a feedback email. Existing localizations are listed by list_beta_app_localizations. App ids come from list_apps.",
+    {
+      app_id: z.string().describe("App Store Connect app ID"),
+      locale: z.string().describe("Locale, e.g. 'en-US'"),
+      description: z
+        .string()
+        .max(4000)
+        .nullable()
+        .optional()
+        .describe("Beta app description shown to testers (max 4000 chars)"),
+      feedback_email: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("Email address tester feedback is sent to"),
+      marketing_url: z.string().nullable().optional().describe("Marketing URL"),
+      privacy_policy_url: z.string().nullable().optional().describe("Privacy policy URL"),
+      tv_os_privacy_policy: z
+        .string()
+        .nullable()
+        .optional()
+        .describe("Privacy policy text for tvOS, where a URL cannot be opened"),
+    },
+    OVERWRITE,
+    async (args) => {
+      try {
+        const attributes = defined({
+          description: args.description,
+          feedbackEmail: args.feedback_email,
+          marketingUrl: args.marketing_url,
+          privacyPolicyUrl: args.privacy_policy_url,
+          tvOsPrivacyPolicy: args.tv_os_privacy_policy,
+        });
+        if (Object.keys(attributes).length === 0) return err("Pass at least one field to set.");
+        const { data } = await client.getAll("/betaAppLocalizations", {
+          "filter[app]": args.app_id,
+          "filter[locale]": args.locale,
+          "fields[betaAppLocalizations]": BETA_APP_LOCALIZATION_FIELDS,
+        });
+        const existing = data.find((l) => l.attributes?.locale === args.locale);
+        const res = existing
+          ? await client.patch(`/betaAppLocalizations/${encodeURIComponent(existing.id)}`, {
+              data: { type: "betaAppLocalizations", id: existing.id, attributes },
+            })
+          : await client.post("/betaAppLocalizations", {
+              data: {
+                type: "betaAppLocalizations",
+                attributes: { locale: args.locale, ...attributes },
+                relationships: { app: { data: { type: "apps", id: args.app_id } } },
+              },
+            });
+        return ok({ created: !existing, ...flattenResource(res.data as JsonApiResource) });
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
+
+  server.tool(
+    "delete_beta_app_localization",
+    "Writes, destructive. Delete one locale of an app's TestFlight app information (description, feedback email, URLs). Testers in that locale then see the app's primary locale. Localization ids come from list_beta_app_localizations.",
+    {
+      localization_id: z
+        .string()
+        .describe("Beta app localization ID (from list_beta_app_localizations)"),
+    },
+    DESTRUCTIVE,
+    async ({ localization_id }) => {
+      try {
+        await client.delete(`/betaAppLocalizations/${encodeURIComponent(localization_id)}`);
+        return ok({ deleted: true, localizationId: localization_id });
+      } catch (e) {
+        return err(e);
+      }
+    },
+  );
+
+  server.tool(
     "submit_build_for_beta_review",
-    "Writes. Submit a build for beta app review, which is required before it can go to external TestFlight groups. The app's beta review contact details and TestFlight localizations must be filled in (get_beta_app_review_detail, list_beta_app_localizations), and the build's export compliance answered (set_build_export_compliance). Follow the result with get_build_status. Build ids come from list_builds.",
+    "Writes. Submit a build for beta app review, which is required before it can go to external TestFlight groups. The app's beta review contact details and TestFlight localizations must be filled in (update_beta_app_review_detail, set_beta_app_localization), and the build's export compliance answered (set_build_export_compliance). Follow the result with get_build_status. Build ids come from list_builds.",
     { build_id: z.string().describe("Build ID (from list_builds)") },
     CREATE,
     async ({ build_id }) => {

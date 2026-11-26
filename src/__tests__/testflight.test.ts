@@ -229,6 +229,9 @@ describe("testflight tools", () => {
     expect([...collect(true).keys()].slice(5)).toEqual([
       "set_build_export_compliance",
       "set_build_whats_new",
+      "update_beta_app_review_detail",
+      "set_beta_app_localization",
+      "delete_beta_app_localization",
       "submit_build_for_beta_review",
       "expire_build",
     ]);
@@ -312,6 +315,136 @@ describe("testflight tools", () => {
       },
     });
     expect(JSON.parse(res.content[0].text!).created).toBe(false);
+  });
+
+  it("update_beta_app_review_detail patches only the passed fields and hides the password", async () => {
+    mockFetch.mockResolvedValueOnce(
+      resp({ data: [{ type: "betaAppReviewDetails", id: "d1", attributes: {} }] }),
+    );
+    mockFetch.mockResolvedValueOnce(
+      resp({
+        data: {
+          type: "betaAppReviewDetails",
+          id: "d1",
+          attributes: { contactFirstName: "Ada", demoAccountPassword: "hunter2" },
+        },
+      }),
+    );
+    const res = await tools.get("update_beta_app_review_detail")!({
+      app_id: "a1",
+      contact_first_name: "Ada",
+      demo_account_required: true,
+      demo_account_password: "hunter2",
+      notes: null,
+    });
+    const lookup = sent(mockFetch);
+    expect(lookup.params.get("filter[app]")).toBe("a1");
+    expect(lookup.params.get("fields[betaAppReviewDetails]")).not.toContain("demoAccountPassword");
+    const patch = sent(mockFetch, 1);
+    expect(patch.method).toBe("PATCH");
+    expect(patch.path).toBe("/v1/betaAppReviewDetails/d1");
+    expect(patch.body).toEqual({
+      data: {
+        type: "betaAppReviewDetails",
+        id: "d1",
+        attributes: {
+          contactFirstName: "Ada",
+          demoAccountRequired: true,
+          demoAccountPassword: "hunter2",
+          notes: null,
+        },
+      },
+    });
+    expect(res.content[0].text).not.toContain("hunter2");
+    expect(JSON.parse(res.content[0].text!)).toEqual({
+      type: "betaAppReviewDetails",
+      id: "d1",
+      contactFirstName: "Ada",
+    });
+  });
+
+  it("update_beta_app_review_detail falls back to the app id and needs a field", async () => {
+    const empty = await tools.get("update_beta_app_review_detail")!({ app_id: "a1" });
+    expect(empty.isError).toBe(true);
+    expect(mockFetch).not.toHaveBeenCalled();
+
+    mockFetch.mockResolvedValueOnce(resp({ data: [] }));
+    mockFetch.mockResolvedValueOnce(
+      resp({ data: { type: "betaAppReviewDetails", id: "a1", attributes: {} } }),
+    );
+    await tools.get("update_beta_app_review_detail")!({ app_id: "a1", contact_phone: "+1 555" });
+    expect(sent(mockFetch, 1).path).toBe("/v1/betaAppReviewDetails/a1");
+  });
+
+  it("set_beta_app_localization creates a missing locale", async () => {
+    mockFetch.mockResolvedValueOnce(resp({ data: [] }));
+    mockFetch.mockResolvedValueOnce(
+      resp({ data: { type: "betaAppLocalizations", id: "l1", attributes: { locale: "en-US" } } }),
+    );
+    const res = await tools.get("set_beta_app_localization")!({
+      app_id: "a1",
+      locale: "en-US",
+      description: "A beta",
+      feedback_email: "beta@example.com",
+    });
+    const lookup = sent(mockFetch);
+    expect(lookup.params.get("filter[app]")).toBe("a1");
+    expect(lookup.params.get("filter[locale]")).toBe("en-US");
+    const post = sent(mockFetch, 1);
+    expect(post.method).toBe("POST");
+    expect(post.path).toBe("/v1/betaAppLocalizations");
+    expect(post.body).toEqual({
+      data: {
+        type: "betaAppLocalizations",
+        attributes: { locale: "en-US", description: "A beta", feedbackEmail: "beta@example.com" },
+        relationships: { app: { data: { type: "apps", id: "a1" } } },
+      },
+    });
+    expect(JSON.parse(res.content[0].text!).created).toBe(true);
+  });
+
+  it("set_beta_app_localization updates an existing locale", async () => {
+    mockFetch.mockResolvedValueOnce(
+      resp({
+        data: [{ type: "betaAppLocalizations", id: "l2", attributes: { locale: "en-US" } }],
+      }),
+    );
+    mockFetch.mockResolvedValueOnce(
+      resp({ data: { type: "betaAppLocalizations", id: "l2", attributes: { locale: "en-US" } } }),
+    );
+    const res = await tools.get("set_beta_app_localization")!({
+      app_id: "a1",
+      locale: "en-US",
+      privacy_policy_url: "https://example.com/privacy",
+      marketing_url: null,
+    });
+    const patch = sent(mockFetch, 1);
+    expect(patch.method).toBe("PATCH");
+    expect(patch.path).toBe("/v1/betaAppLocalizations/l2");
+    expect(patch.body).toEqual({
+      data: {
+        type: "betaAppLocalizations",
+        id: "l2",
+        attributes: { privacyPolicyUrl: "https://example.com/privacy", marketingUrl: null },
+      },
+    });
+    expect(JSON.parse(res.content[0].text!).created).toBe(false);
+  });
+
+  it("set_beta_app_localization needs at least one field", async () => {
+    const res = await tools.get("set_beta_app_localization")!({ app_id: "a1", locale: "en-US" });
+    expect(res.isError).toBe(true);
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
+  it("delete_beta_app_localization deletes the localization", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, status: 204, headers: new Headers() });
+    const res = await tools.get("delete_beta_app_localization")!({ localization_id: "l1" });
+    expect(sent(mockFetch)).toMatchObject({
+      method: "DELETE",
+      path: "/v1/betaAppLocalizations/l1",
+    });
+    expect(JSON.parse(res.content[0].text!)).toEqual({ deleted: true, localizationId: "l1" });
   });
 
   it("submit_build_for_beta_review creates a beta app review submission", async () => {

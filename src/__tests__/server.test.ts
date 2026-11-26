@@ -40,6 +40,8 @@ const MANAGEMENT_WRITES = {
     "update_device",
     "set_build_export_compliance",
     "set_build_whats_new",
+    "update_beta_app_review_detail",
+    "set_beta_app_localization",
     "set_app_store_version_build",
     "update_beta_group",
     "reply_to_customer_review",
@@ -57,6 +59,7 @@ const MANAGEMENT_WRITES = {
     "delete_phased_release",
     "release_app_store_version",
     "expire_build",
+    "delete_beta_app_localization",
     "remove_beta_tester",
     "delete_customer_review_response",
   ],
@@ -109,7 +112,7 @@ describe("server", () => {
 
   it("registers the write tools when writes are allowed", async () => {
     const names = (await listTools(true)).map((t) => t.name);
-    expect(names).toHaveLength(98);
+    expect(names).toHaveLength(101);
     expect(new Set(names).size).toBe(names.length);
     expect(names.filter((n) => WRITE_TOOLS.includes(n)).sort()).toEqual([...WRITE_TOOLS].sort());
     expect(names.filter((n) => MANAGEMENT_TOOLS.includes(n)).sort()).toEqual(
