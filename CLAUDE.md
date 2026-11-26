@@ -80,7 +80,8 @@ vendorNumber, allowWrites, uploadDir, downloadDir)`, and connects it over stdio.
   `(server, client, allowWrites, downloadDir)` and `screenshots`, `uploads` and `notary` are
   `(…, allowWrites, uploadDir)`). `provisioning` holds bundle IDs, capabilities,
   certificates, profiles and devices (reads and writes); `testers` the beta group/tester writes;
-  `testflight` the build writes (export compliance, What to Test, beta review).
+  `testflight` the build writes (export compliance, What to Test, beta review) and the Test
+  Information writes (beta app review detail, beta app localizations).
 - **`src/tools/shared.ts`** — the tool annotation presets (`READ_ONLY`, `CREATE`, `OVERWRITE`,
   `DESTRUCTIVE`) and `UNTRUSTED_NOTE`. Reuse these instead of redeclaring them.
 
@@ -124,7 +125,7 @@ try { return ok(...); } catch (e) { return err(e); } })`. The third argument is 
 - **Scope: retrieval first, writes opt-in.** Read tools are the default. Writes are limited to what
   the README catalog lists: the App Store listing (`tools/listing.ts`, `upload_app_screenshots`),
   signing/provisioning (bundle IDs, capabilities, certificate creation from a CSR, profiles, devices),
-  TestFlight groups/testers/builds/export compliance/What to Test/beta review, build uploads, the
+  TestFlight groups/testers/builds/export compliance/What to Test/Test Information/beta review, build uploads, the
   App Store release flow (`tools/release.ts`), customer review responses and notarization
   submissions. Pick the annotation preset by effect: `CREATE` for new resources,
   `OVERWRITE` for idempotent updates, `DESTRUCTIVE` for deletes, removals, cancellations, anything
@@ -137,6 +138,8 @@ try { return ok(...); } catch (e) { return err(e); } })`. The third argument is 
 - **Secrets:** the repo is public. Never log the `.p8` key or tokens; only read them from env. Tests
   use a locally generated throwaway EC key. Review-detail endpoints expose a `demoAccountPassword`
   field — it is deliberately left out of every `fields[...]` list; don't add it back.
+  `update_beta_app_review_detail` takes it as write-only input and deletes it from the response
+  before returning.
 
 ## Tests
 
