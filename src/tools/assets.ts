@@ -29,7 +29,7 @@ const UPLOAD_RULE = {
   what: "images",
   kinds: "PNG/JPEG",
   extensions: IMAGE_EXTENSIONS,
-  maxBytes: 50 * 1024 * 1024,
+  maxBytes: 500 * 1024 * 1024,
 };
 
 async function listPlacements(
@@ -130,7 +130,7 @@ export function registerAssetTools(
 
   server.tool(
     "upload_app_store_asset",
-    "Writes. Upload a local PNG/JPEG file as the product page header (PRODUCT_PAGE_HEADER_ASSET) or the search results asset (APP_STORE_SEARCH_RESULTS_ASSET) of an App Store version localization, the two images of the 'Header and Search Results' tab. The file must be inside the directory set in ASC_UPLOAD_DIR. It is added to the app's asset library and then placed on the localization. If the localization already has an asset of that type the call fails without changing anything unless replace_existing is set; then the new image is uploaded and placed first and the previous placement is removed afterwards (when Apple only accepts one placement at a time, the previous one is removed right before the new one is placed). Removed placements keep their image in the asset library. Required dimensions and placement groups are in get_app_asset_library_specs. Apple processes uploads asynchronously, so check the state with list_app_store_asset_placements. Nothing is submitted for review.",
+    "Writes. Upload a local PNG/JPEG file as the product page header (PRODUCT_PAGE_HEADER_ASSET) or the search results asset (APP_STORE_SEARCH_RESULTS_ASSET) of an App Store version localization, the two images of the 'Header and Search Results' tab. The file must be inside the directory set in ASC_UPLOAD_DIR (max 500 MB). It is added to the app's asset library and then placed on the localization. If the localization already has an asset of that type the call fails without changing anything unless replace_existing is set; then the new image is uploaded and placed first and the previous placement is removed afterwards (when Apple only accepts one placement at a time, the previous one is removed right before the new one is placed). Removed placements keep their image in the asset library. Required dimensions and placement groups are in get_app_asset_library_specs. Apple processes uploads asynchronously, so check the state with list_app_store_asset_placements. Nothing is submitted for review.",
     {
       app_id: z.string().describe("App Store Connect app ID (owner of the asset library)"),
       localization_id: z
@@ -146,7 +146,7 @@ export function registerAssetTools(
         .string()
         .optional()
         .describe(
-          "Placement group, if the placement type needs one (see get_app_asset_library_specs)",
+          "Placement group from get_app_asset_library_specs; the header and search results assets use DEFAULT_PROFILE",
         ),
       reference_name: z.string().optional().describe("Name of the image in the asset library"),
       replace_existing: z
